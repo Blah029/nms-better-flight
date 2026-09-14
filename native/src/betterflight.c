@@ -25,45 +25,143 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.0.0"
+#define BF_VERSION "1.0.1"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
 /* ======================================================================== */
+/*
+ * Once this DLL is loaded as "winmm.dll", EVERY module in the process that
+ * imports winmm binds to it - not just NMS.exe. Steam's steamclient64.dll uses
+ * the waveOut, waveIn and mixer families; overlays and frame-generation DLLs
+ * use the timer functions. Windows refuses to start the process if any imported name is
+ * missing (Wine only logs it - which is why 1.0.0 worked on Linux and failed to
+ * launch on Windows). So we export the complete winmm interface: the union of
+ * real Windows 10/11 and Wine exports, generated into winmm_exports.inc.
+ *
+ * Each export is a one-instruction stub:   jmp [bf_winmm_table + index*8]
+ * The table is filled from the system winmm.dll during DLL_PROCESS_ATTACH -
+ * before any importing module can run. As a safety net, every slot starts out
+ * pointing at a lazy resolver (which fills the table, then continues into the
+ * real function) and names the system DLL lacks fall back to a stub returning 0.
+ * Nothing ever jumps to address zero.
+ */
 
 static HMODULE g_self;
-static INIT_ONCE g_real_once = INIT_ONCE_STATIC_INIT;
-static UINT (WINAPI *real_timeBeginPeriod)(UINT);
-static UINT (WINAPI *real_timeEndPeriod)(UINT);
 
-static BOOL CALLBACK load_real_winmm(PINIT_ONCE once, PVOID param, PVOID *ctx)
+enum {
+#define WINMM_EXPORT(idx, name)    WINMM_IDX_##name,
+#define WINMM_EXPORT_ORD(idx, ord) WINMM_IDX_ord_##ord,
+#include "winmm_exports.inc"
+#undef WINMM_EXPORT
+#undef WINMM_EXPORT_ORD
+    WINMM_COUNT
+};
+
+/* GetProcAddress key: a name, or MAKEINTRESOURCE(ordinal) for unnamed exports. */
+static const char *const WINMM_KEYS[WINMM_COUNT] = {
+#define WINMM_EXPORT(idx, name)    #name,
+#define WINMM_EXPORT_ORD(idx, ord) (const char *)(uintptr_t)(ord),
+#include "winmm_exports.inc"
+#undef WINMM_EXPORT
+#undef WINMM_EXPORT_ORD
+};
+
+#define WINMM_EXPORT(idx, name)    void bf_lazy_##name(void);
+#define WINMM_EXPORT_ORD(idx, ord) void bf_lazy_ord_##ord(void);
+#include "winmm_exports.inc"
+#undef WINMM_EXPORT
+#undef WINMM_EXPORT_ORD
+
+__attribute__((used)) void *bf_winmm_table[WINMM_COUNT] = {
+#define WINMM_EXPORT(idx, name)    bf_lazy_##name,
+#define WINMM_EXPORT_ORD(idx, ord) bf_lazy_ord_##ord,
+#include "winmm_exports.inc"
+#undef WINMM_EXPORT
+#undef WINMM_EXPORT_ORD
+};
+
+static int g_winmm_resolved, g_winmm_missing;
+
+static uint64_t bf_winmm_missing(void) { return 0; }
+
+static BOOL CALLBACK resolve_winmm_once(PINIT_ONCE once, PVOID param, PVOID *ctx)
 {
     (void)once; (void)param; (void)ctx;
+    HMODULE real = NULL;
     wchar_t path[MAX_PATH];
     UINT n = GetSystemDirectoryW(path, MAX_PATH);
-    if (n == 0 || n > MAX_PATH - 16)
-        return TRUE;
-    wcscat(path, L"\\winmm.dll");
-    HMODULE real = LoadLibraryW(path);
+    if (n && n < MAX_PATH - 16) {
+        wcscat(path, L"\\winmm.dll");
+        real = LoadLibraryW(path);
+    }
     /* Under Wine with winmm=n (instead of n,b) this resolves to ourselves. */
-    if (real && real != g_self) {
-        real_timeBeginPeriod = (void *)GetProcAddress(real, "timeBeginPeriod");
-        real_timeEndPeriod   = (void *)GetProcAddress(real, "timeEndPeriod");
+    if (real == g_self) real = NULL;
+    for (int i = 0; i < WINMM_COUNT; i++) {
+        void *fn = real ? (void *)GetProcAddress(real, WINMM_KEYS[i]) : NULL;
+        if (fn) g_winmm_resolved++;
+        else  { g_winmm_missing++; fn = (void *)bf_winmm_missing; }
+        bf_winmm_table[i] = fn;
     }
     return TRUE;
 }
 
-UINT WINAPI timeBeginPeriod(UINT period)
+static INIT_ONCE g_winmm_once = INIT_ONCE_STATIC_INIT;
+
+__attribute__((used)) void bf_winmm_resolve(void)
 {
-    InitOnceExecuteOnce(&g_real_once, load_real_winmm, NULL, NULL);
-    return real_timeBeginPeriod ? real_timeBeginPeriod(period) : 0; /* TIMERR_NOERROR */
+    InitOnceExecuteOnce(&g_winmm_once, resolve_winmm_once, NULL, NULL);
 }
 
-UINT WINAPI timeEndPeriod(UINT period)
-{
-    InitOnceExecuteOnce(&g_real_once, load_real_winmm, NULL, NULL);
-    return real_timeEndPeriod ? real_timeEndPeriod(period) : 0;
-}
+/* Export stubs + lazy entry points. */
+__asm__(".text\n");
+#define BF_STUB(idx, sym)                                         \
+    __asm__(".globl bf_x_" sym "\n"                              \
+            ".p2align 3\n"                                       \
+            "bf_x_" sym ":\n"                                    \
+            "    jmpq *bf_winmm_table+" #idx "*8(%rip)\n"        \
+            ".globl bf_lazy_" sym "\n"                           \
+            "bf_lazy_" sym ":\n"                                 \
+            "    movl $" #idx ", %eax\n"                         \
+            "    jmp bf_lazy_common\n");
+#define WINMM_EXPORT(idx, name)    BF_STUB(idx, #name)
+#define WINMM_EXPORT_ORD(idx, ord) BF_STUB(idx, "ord_" #ord)
+#include "winmm_exports.inc"
+#undef WINMM_EXPORT
+#undef WINMM_EXPORT_ORD
+#undef BF_STUB
+
+/* Save every argument register (incl. xmm0-3), resolve, restore, and continue
+ * into the real function with the caller's stack untouched. On entry rsp is
+ * 8 mod 16; five pushes + 0x60 keeps the call to C 16-byte aligned. */
+__asm__(".text\n"
+        ".seh_proc bf_lazy_common\n"
+        "bf_lazy_common:\n"
+        "    pushq %rcx\n"   ".seh_pushreg %rcx\n"
+        "    pushq %rdx\n"   ".seh_pushreg %rdx\n"
+        "    pushq %r8\n"    ".seh_pushreg %r8\n"
+        "    pushq %r9\n"    ".seh_pushreg %r9\n"
+        "    pushq %rax\n"   ".seh_pushreg %rax\n"
+        "    subq $0x60, %rsp\n" ".seh_stackalloc 0x60\n"
+        ".seh_endprologue\n"
+        "    movdqu %xmm0, 0x20(%rsp)\n"
+        "    movdqu %xmm1, 0x30(%rsp)\n"
+        "    movdqu %xmm2, 0x40(%rsp)\n"
+        "    movdqu %xmm3, 0x50(%rsp)\n"
+        "    call bf_winmm_resolve\n"
+        "    movdqu 0x20(%rsp), %xmm0\n"
+        "    movdqu 0x30(%rsp), %xmm1\n"
+        "    movdqu 0x40(%rsp), %xmm2\n"
+        "    movdqu 0x50(%rsp), %xmm3\n"
+        "    addq $0x60, %rsp\n"
+        "    popq %rax\n"
+        "    popq %r9\n"
+        "    popq %r8\n"
+        "    popq %rdx\n"
+        "    popq %rcx\n"
+        "    leaq bf_winmm_table(%rip), %r11\n"
+        "    jmpq *(%r11,%rax,8)\n"
+        ".seh_endproc\n");
 
 /* ======================================================================== */
 /*  logging                                                                 */
@@ -546,6 +644,9 @@ static DWORD WINAPI init_thread(LPVOID unused)
         (void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "wine_get_version");
     logmsg("BetterFlight %s loaded into NMS.exe (%s)", BF_VERSION,
            wine_get_version ? wine_get_version() : "native Windows");
+    bf_winmm_resolve();
+    logmsg("winmm proxy: %d exports forwarded to the system winmm.dll, %d not present there",
+           g_winmm_resolved, g_winmm_missing);
 
     swprintf(g_ini, MAX_PATH, L"%lsBetterFlight.ini", g_dir);
     if (GetFileAttributesW(g_ini) == INVALID_FILE_ATTRIBUTES)
@@ -584,6 +685,11 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
     if (reason == DLL_PROCESS_ATTACH) {
         g_self = inst;
         DisableThreadLibraryCalls(inst);
+#ifndef BF_TEST_LAZY_WINMM
+        /* Fill the winmm forwarding table now: modules importing winmm are
+         * initialized after us, so nothing can call a stub before this. */
+        bf_winmm_resolve();
+#endif
         if (!host_is_nms())
             return TRUE;                     /* be a plain winmm proxy anywhere else */
         InitializeCriticalSection(&g_log_cs);

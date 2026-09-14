@@ -1,0 +1,17 @@
+mixerClose
+mixerGetControlDetailsA
+mixerGetDevCapsA
+mixerGetID
+mixerGetLineControlsA
+mixerGetLineInfoA
+mixerOpen
+mixerSetControlDetails
+timeBeginPeriod
+timeEndPeriod
+waveInClose
+waveInMessage
+waveInOpen
+waveOutClose
+waveOutGetDevCapsW
+waveOutMessage
+waveOutOpen

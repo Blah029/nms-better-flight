@@ -959,6 +959,59 @@ the sign convention of the node's right/up rows, behaviour while landed or in pu
 drive, and feel. `Debug=1` logs per-second velocity decomposed into right/up/at, so
 the first flight session answers all of these from `BetterFlight.log`.
 
+
+---
+
+## 14. 1.0.0 failed to launch on Windows (fixed in 1.0.1)
+
+**Report:** *"The procedure entry point waveOutReset could not be located in the dynamic
+link library …\steam_api64.dll"* — game would not start.
+
+**Cause: an incomplete proxy.** 1.0.0's `winmm.dll` exported only `timeBeginPeriod` and
+`timeEndPeriod` — everything `NMS.exe` imports. But once a DLL is loaded as `winmm.dll`,
+*every* module in the process that imports winmm binds to it. Scanning the game folder
+and the Steam client DLLs that load into the game:
+
+| Module | winmm imports |
+|---|---|
+| `NMS.exe` | `timeBeginPeriod`, `timeEndPeriod` |
+| `sl.dlss_g.dll` (DLSS frame generation) | `timeBeginPeriod`, `timeEndPeriod` |
+| `GameOverlayRenderer64.dll` | `timeBeginPeriod` |
+| `steamclient64.dll` | **17**: `waveOut*`, `waveIn*`, `mixer*`, timers |
+
+The Linux Steam client's `steamclient64.dll` doesn't import `waveOutReset`; the Windows
+player's newer client does. Patching single names would chase this forever.
+
+**Why Linux never showed it:** Windows refuses to start a process when any imported name is
+missing. Wine logs it and substitutes a stub that only faults if called.
+
+**Fix:** forward the complete interface. Reference export tables were taken from real
+Microsoft binaries (via Winbindex → Microsoft symbol server):
+
+| Source | Exports |
+|---|---|
+| Windows 10 22H2 (10.0.19041.546) | 181 (ordinal 2 unnamed) |
+| Windows 11 24H2 (10.0.26100.9278) | 181 — **ordinals identical to 10 22H2** |
+| Windows 11 26H1 preview (10.0.28000) | smaller; timer functions forwarded to `api-ms-win-mm-time-l1-1-0` |
+| Wine / Proton 11 builtin | 189 |
+
+The proxy exports the union — **189** (188 named + unnamed ordinal 2) — at Windows 11 24H2
+ordinals. Each export is `jmp [table+i*8]`; the table is filled from the system winmm during
+`DLL_PROCESS_ATTACH` (importing modules initialize after us). Every slot starts at a lazy
+resolver that preserves all argument registers, and names the system DLL lacks fall back to
+a stub returning 0 — nothing can jump to address zero.
+
+**Verified offline:** complete coverage of both Windows export tables and every game-folder
+import at matching ordinals; a runtime test calling winmm through the proxy produces output
+identical to the real DLL under Wine, via both the eager and the lazy path.
+
+**Also fixed:** builds were not reproducible (the linker embeds two timestamps), so
+re-packaging silently changed the DLL's hash and invalidated VirusTotal links. Both
+timestamps are now zeroed after linking.
+
+**Lesson:** Wine is more permissive than Windows about DLL imports. "Works under Proton"
+does not imply "works on Windows" for anything touching the loader.
+
 ---
 
 ## Sources

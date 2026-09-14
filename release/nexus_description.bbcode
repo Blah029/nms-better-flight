@@ -51,6 +51,8 @@ or run the included [i]linux_wine_override.py[/i] once with the game closed. Use
 [size=5][b]Compatibility[/b][/size]
 Tested on Steam under Linux (Proton). Steam on Windows is expected to work - reports welcome. GOG untested. Xbox / Game Pass not supported.
 
+[b]Antivirus:[/b] some antivirus tools flag unknown DLLs that hook into games. [i]winmm.dll[/i] only loads inside No Man's Sky, and forwards calls to Windows' own winmm.dll.
+
 [size=5][b]Bug reports[/b][/size]
 Set [i]Debug = 1[/i] in [i]Binaries/BetterFlight.ini[/i], reproduce the problem, and attach [i]Binaries/BetterFlight.log[/i]. It records whether the module loaded and why strafe didn't apply.
 

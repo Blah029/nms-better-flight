@@ -115,8 +115,7 @@ control: forward/back, left/right, up/down, pitch, yaw and roll.
   - Keyboard only: controllers and HOTAS cannot strafe yet.
   - Typing A, D or Space in text chat while flying also strafes.
   - Some antivirus tools flag unknown DLLs that hook games. winmm.dll only
-    loads inside No Man's Sky and forwards the two Windows timer functions the
-    game uses.
+    loads inside No Man's Sky and forwards calls to Windows' own winmm.dll.
 
 
 -------------------------------------------------------------------------------
