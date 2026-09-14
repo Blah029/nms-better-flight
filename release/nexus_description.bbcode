@@ -1,0 +1,68 @@
+[center][size=6][b]Better Flight[/b][/size]
+[size=4]6DOF flight controls for No Man's Sky[/size][/center]
+
+Strafe sideways. Thrust up and down. Stop dead in space. Turn without the ship banking on its own.
+
+No Man's Sky ships only ever fly where the nose points. Better Flight gives you control over all six directions of movement - forward/back, left/right, up/down, pitch, yaw and roll - using a small native module that adds real thruster movement on top of a retuned flight model.
+
+[size=5][b]Features[/b][/size]
+[list]
+[*][b]Strafe[/b] left and right, [b]thrust[/b] up and down
+[*]Mouse turning no longer rolls the ship
+[*]Ships can come to a complete stop
+[*]Momentum carries - the ship doesn't snap to where the nose points
+[*]Adjustable thruster strength, editable while playing
+[*]F8 toggles strafe on and off
+[/list]
+
+[size=5][b]Controls[/b][/size]
+[code]
+W / S    thrust / brake            LShift  boost
+A / D    STRAFE left / right       B       pulse jump   (was Space)
+Space    THRUST UP                 N       land         (was E)
+LCtrl    THRUST DOWN               F       exit / tag   (was E)
+Q / E    roll                      C       scan
+Mouse    pitch / yaw, no banking   F8      strafe on/off
+[/code]
+
+[size=5][b]Installation[/b][/size]
+[b]Windows[/b]
+[list=1]
+[*]Close the game.
+[*]Extract the zip into your [i]No Man's Sky[/i] folder (the one containing [i]Binaries[/i] and [i]GAMEDATA[/i]) and merge folders.
+[*]Launch normally.
+[/list]
+Manual install is recommended - part of the mod goes in [i]Binaries[/i], which mod managers don't always handle.
+
+[b]Linux / Steam Deck[/b]
+Install as above, then add this to the game's Steam launch options:
+[code]WINEDLLOVERRIDES="winmm=n,b" %command%[/code]
+or run the included [i]linux_wine_override.py[/i] once with the game closed. Use exactly [b]n,b[/b] - plain [b]n[/b] breaks it.
+
+[size=5][b]Please read[/b][/size]
+[list]
+[*][b]Custom keybinds:[/b] if you've changed keys in the game's Controls menu, those override this mod's layout. Reset to default or set roll/pulse/land/exit by hand. Strafe works either way.
+[*][b]Game updates:[/b] strafe usually survives updates, and switches itself off safely if it can't. The flight retune is tied to a game version and may need a mod update after a patch.
+[*][b]Conflicts:[/b] other mods that replace [i]GCSPACESHIPGLOBALS.GLOBAL.MBIN[/i] (most flight/speed mods), keyboard binding mods, and other mods installed as [i]winmm.dll[/i].
+[*][b]Keyboard only[/b] for now - controllers and HOTAS can't strafe yet.
+[*]Typing A, D or Space in text chat while flying also strafes.
+[/list]
+
+[size=5][b]Compatibility[/b][/size]
+Tested on Steam under Linux (Proton). Steam on Windows is expected to work - reports welcome. GOG untested. Xbox / Game Pass not supported.
+
+[size=5][b]Bug reports[/b][/size]
+Set [i]Debug = 1[/i] in [i]Binaries/BetterFlight.ini[/i], reproduce the problem, and attach [i]Binaries/BetterFlight.log[/i]. It records whether the module loaded and why strafe didn't apply.
+
+[size=5][b]Uninstall[/b][/size]
+Delete [i]Binaries/winmm.dll[/i], [i]Binaries/BetterFlight.ini[/i], [i]GAMEDATA/MODS/BetterFlight[/i] and [i]GAMEDATA/MODS/BetterFlightControls[/i]. On Linux, also remove the launch option.
+
+[size=5][b]Credits[/b][/size]
+[list]
+[*][url=https://github.com/monkeyman192/NMS.py]NMS.py[/url] by monkeyman192 - reverse-engineering data the function signatures are derived from
+[*][url=https://github.com/TsudaKageyu/minhook]MinHook[/url] by Tsuda Kageyu - function hooking
+[*][url=https://github.com/monkeyman192/MBINCompiler]MBINCompiler[/url] and [url=https://github.com/monkeyman192/HGPAKtool]HGPAKtool[/url] - game data tooling
+[/list]
+Developed with AI assistance (Anthropic's Claude) and tested in-game.
+
+No Man's Sky is (c) Hello Games. This is an unofficial fan mod.

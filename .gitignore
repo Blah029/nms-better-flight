@@ -1,0 +1,5 @@
+dist/
+native/build/
+__pycache__/
+tools/
+work/
