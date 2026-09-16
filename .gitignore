@@ -1,0 +1,9 @@
+dist/
+native/build/
+__pycache__/
+tools/
+work/
+# other mods dropped in for compatibility testing (e.g. PTSd)
+/*.zip
+/*.7z
+/*.rar

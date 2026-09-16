@@ -1,0 +1,775 @@
+<title>Newtonian Flight Feel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root{
+  --bg:#F1F3F6; --surface:#FFFFFF; --surface-2:#F7F8FA;
+  --ink:#11161D; --ink-2:#39434F; --muted:#66717E; --faint:#8E98A4;
+  --rule:#DCE0E6; --rule-2:#EAEDF1;
+  --sc:#0B6C87; --sc-bg:#E2EFF4; --sc-rule:#B9D8E2;
+  --ed:#9C5410; --ed-bg:#F8EBDB; --ed-rule:#E4C9A6;
+  --accent:#0B6C87; --accent-2:#0E8AA9;
+  --p1:#0B6C87; --p1-bg:#0B6C87; --p1-ink:#FFFFFF;
+  --p2-bg:#D6E9F0; --p2-ink:#0A5065;
+  --p3-bg:transparent; --p3-ink:#66717E; --p3-rule:#C3CBD4;
+  --ok:#2F6B4F; --ok-bg:#E1EFE7; --no:#8C3A2E; --no-bg:#F6E4E0;
+  --shadow:0 1px 2px rgba(17,22,29,.05), 0 6px 18px -10px rgba(17,22,29,.14);
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;
+  --disp:"Archivo","IBM Plex Sans",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1218; --surface:#161B22; --surface-2:#1B212A;
+  --ink:#E7EBF0; --ink-2:#C0C8D2; --muted:#8F9BA8; --faint:#6D7987;
+  --rule:#242C36; --rule-2:#1E252E;
+  --sc:#5CC4E6; --sc-bg:#132833; --sc-rule:#1E4657;
+  --ed:#DFA162; --ed-bg:#2B2015; --ed-rule:#513B22;
+  --accent:#5CC4E6; --accent-2:#7FD4EF;
+  --p1-bg:#5CC4E6; --p1-ink:#0B1620;
+  --p2-bg:#1B3D4C; --p2-ink:#9FDCF2;
+  --p3-ink:#8F9BA8; --p3-rule:#39424E;
+  --ok:#8FD3AE; --ok-bg:#15291F; --no:#E9A292; --no-bg:#2E1A16;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}}
+:root[data-theme="dark"]{
+  --bg:#0E1218; --surface:#161B22; --surface-2:#1B212A;
+  --ink:#E7EBF0; --ink-2:#C0C8D2; --muted:#8F9BA8; --faint:#6D7987;
+  --rule:#242C36; --rule-2:#1E252E;
+  --sc:#5CC4E6; --sc-bg:#132833; --sc-rule:#1E4657;
+  --ed:#DFA162; --ed-bg:#2B2015; --ed-rule:#513B22;
+  --accent:#5CC4E6; --accent-2:#7FD4EF;
+  --p1-bg:#5CC4E6; --p1-ink:#0B1620;
+  --p2-bg:#1B3D4C; --p2-ink:#9FDCF2;
+  --p3-ink:#8F9BA8; --p3-rule:#39424E;
+  --ok:#8FD3AE; --ok-bg:#15291F; --no:#E9A292; --no-bg:#2E1A16;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.62;-webkit-font-smoothing:antialiased}
+::selection{background:var(--sc-bg);color:var(--ink)}
+a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+a:hover{border-bottom-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px;border-radius:2px}
+
+.wrap{max-width:1220px;margin:0 auto;padding:0 28px}
+.layout{display:block}
+@media(min-width:1120px){.layout{display:grid;grid-template-columns:216px minmax(0,1fr);gap:56px;align-items:start}}
+
+/* ---------- masthead ---------- */
+.mast{border-bottom:1px solid var(--rule);background:var(--surface)}
+.mast-in{max-width:1220px;margin:0 auto;padding:44px 28px 34px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 16px}
+h1{font-family:var(--disp);font-weight:700;font-size:clamp(30px,4.6vw,50px);line-height:1.03;letter-spacing:-.022em;margin:0 0 14px;text-wrap:balance;max-width:16ch}
+.dek{font-size:17px;line-height:1.55;color:var(--ink-2);max-width:66ch;margin:0 0 26px}
+.meta{display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--rule-2);padding-top:18px}
+.meta div{padding-right:34px;margin-right:34px;border-right:1px solid var(--rule-2)}
+.meta div:last-child{border-right:0;padding-right:0;margin-right:0}
+.meta dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 4px}
+.meta dd{margin:0;font-family:var(--mono);font-size:13px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+
+/* ---------- toc ---------- */
+nav.toc{display:none}
+@media(min-width:1120px){
+  nav.toc{display:block;position:sticky;top:24px;padding:34px 0 40px;font-size:13.5px}
+  nav.toc .tl{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+  nav.toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px}
+  nav.toc a{display:flex;gap:9px;padding:5px 8px 5px 0;color:var(--muted);border:0;line-height:1.35;border-radius:3px}
+  nav.toc a:hover{color:var(--ink)}
+  nav.toc a.on{color:var(--ink);font-weight:600}
+  nav.toc a .n{font-family:var(--mono);font-size:11px;color:var(--faint);padding-top:2px;min-width:14px}
+  nav.toc a.on .n{color:var(--accent)}
+}
+
+/* ---------- sections ---------- */
+main{padding:0 0 96px}
+section{padding:52px 0 8px;border-top:1px solid var(--rule);margin-top:44px}
+section:first-child{border-top:0;margin-top:0;padding-top:44px}
+.sechead{display:flex;gap:16px;align-items:baseline;margin:0 0 8px}
+.secnum{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);letter-spacing:.06em;padding-top:6px}
+h2{font-family:var(--disp);font-weight:700;font-size:clamp(23px,2.9vw,31px);letter-spacing:-.018em;line-height:1.14;margin:0;text-wrap:balance}
+.lede{color:var(--ink-2);font-size:16.5px;max-width:68ch;margin:0 0 30px}
+h3{font-family:var(--disp);font-weight:600;font-size:19px;letter-spacing:-.012em;margin:38px 0 10px;text-wrap:balance}
+h4{font-family:var(--mono);font-weight:600;font-size:11.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin:28px 0 9px}
+p{margin:0 0 15px;max-width:70ch}
+ul,ol{max-width:70ch;margin:0 0 16px;padding-left:20px}
+li{margin:0 0 7px}
+li::marker{color:var(--faint)}
+strong{font-weight:600;color:var(--ink)}
+em{color:var(--ink-2)}
+code{font-family:var(--mono);font-size:.865em;background:var(--surface-2);border:1px solid var(--rule-2);padding:.09em .36em;border-radius:3px;color:var(--ink-2);white-space:nowrap}
+.kbd{font-family:var(--mono);font-size:.82em;font-weight:500;background:var(--surface);border:1px solid var(--rule);border-bottom-width:2px;padding:.11em .42em;border-radius:4px;color:var(--ink);white-space:nowrap}
+
+/* ---------- source chips ---------- */
+.src{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;padding:.16em .45em;border-radius:3px;vertical-align:.12em;margin-left:.3em;font-weight:500;white-space:nowrap}
+.src.sc{background:var(--sc-bg);color:var(--sc);border:1px solid var(--sc-rule)}
+.src.ed{background:var(--ed-bg);color:var(--ed);border:1px solid var(--ed-rule)}
+
+/* ---------- callout ---------- */
+.note{background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--accent);padding:16px 20px;margin:22px 0;max-width:72ch;border-radius:0 4px 4px 0}
+.note p:last-child{margin-bottom:0}
+.note .nt{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 7px;font-weight:600}
+.quote{border-left:3px solid var(--rule);padding:2px 0 2px 20px;margin:20px 0;color:var(--ink-2);font-style:italic;max-width:70ch}
+.quote cite{display:block;font-style:normal;font-family:var(--mono);font-size:11.5px;color:var(--faint);margin-top:8px;letter-spacing:.02em}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;margin:20px 0 26px;border:1px solid var(--rule);border-radius:5px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+caption{caption-side:top;text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);padding:12px 16px 0}
+th,td{padding:8px 14px;text-align:left;border-bottom:1px solid var(--rule-2);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface-2);border-bottom:1px solid var(--rule);white-space:nowrap;position:sticky;top:0}
+tbody tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.m{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tbody tr:hover{background:var(--surface-2)}
+.ship{font-weight:600;white-space:nowrap}
+
+/* ---------- comparison split ---------- */
+.vs{display:grid;gap:0;border:1px solid var(--rule);border-radius:5px;overflow:hidden;margin:24px 0;background:var(--surface)}
+@media(min-width:760px){.vs{grid-template-columns:1fr 1fr}}
+.vs > div{padding:18px 22px 20px}
+.vs > div:first-child{border-bottom:1px solid var(--rule)}
+@media(min-width:760px){.vs > div:first-child{border-bottom:0;border-right:1px solid var(--rule)}}
+.vs h5{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin:0 0 12px;font-weight:600}
+.vs .a h5{color:var(--sc)} .vs .b h5{color:var(--ed)}
+.vs p,.vs ul{font-size:14.5px;max-width:none}
+.vs ul{padding-left:18px;margin-bottom:0}
+.vs li{margin-bottom:6px}
+
+/* ---------- pipeline diagram ---------- */
+.diag{margin:26px 0 30px;padding:22px;background:var(--surface);border:1px solid var(--rule);border-radius:5px;overflow-x:auto}
+.diag svg{display:block;min-width:660px;width:100%;height:auto}
+
+/* ---------- checklist ---------- */
+.ckbar{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:22px 0 8px;padding:14px 18px;background:var(--surface);border:1px solid var(--rule);border-radius:5px}
+.prog{flex:1;min-width:180px;display:flex;align-items:center;gap:12px}
+.bar{flex:1;height:6px;background:var(--rule);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s ease}
+.pnum{font-family:var(--mono);font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.btn{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;padding:7px 13px;border-radius:4px;border:1px solid var(--rule);background:var(--surface-2);color:var(--ink-2);cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn[disabled]{opacity:.45;cursor:default}
+.btn.pri{background:var(--accent);color:var(--p1-ink);border-color:var(--accent)}
+.btn.pri:hover{background:var(--accent-2);color:var(--p1-ink)}
+
+.tier{margin:34px 0 0}
+.tierhead{display:flex;align-items:center;gap:12px;margin:0 0 4px}
+.pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;font-weight:600;padding:.24em .6em;border-radius:3px}
+.pill.p1{background:var(--p1-bg);color:var(--p1-ink)}
+.pill.p2{background:var(--p2-bg);color:var(--p2-ink)}
+.pill.p3{background:var(--p3-bg);color:var(--p3-ink);border:1px solid var(--p3-rule)}
+.tierhead .tn{font-family:var(--mono);font-size:11.5px;color:var(--faint)}
+.tierdesc{font-size:14.5px;color:var(--muted);max-width:70ch;margin:0 0 14px}
+
+.items{list-style:none;padding:0;margin:0;border:1px solid var(--rule);border-radius:5px;overflow:hidden;background:var(--surface);max-width:none}
+.items li{margin:0;border-bottom:1px solid var(--rule-2)}
+.items li:last-child{border-bottom:0}
+.item{display:grid;grid-template-columns:auto 1fr;gap:14px;padding:13px 18px;align-items:start;cursor:pointer}
+.item:hover{background:var(--surface-2)}
+.item input{appearance:none;width:16px;height:16px;border:1.5px solid var(--p3-rule);border-radius:3px;margin:4px 0 0;cursor:pointer;flex:none;background:var(--surface);position:relative}
+.item input:checked{background:var(--accent);border-color:var(--accent)}
+.item input:checked::after{content:"";position:absolute;left:4.5px;top:1px;width:4px;height:9px;border:solid var(--p1-ink);border-width:0 2px 2px 0;transform:rotate(42deg)}
+.item .ttl{font-weight:600;font-size:14.8px;line-height:1.4;display:block;margin-bottom:3px}
+.item .why{font-size:13.6px;color:var(--muted);line-height:1.5;display:block}
+.item .why b{color:var(--ink-2);font-weight:600}
+.item .tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:.14em .4em;border-radius:3px;margin-left:6px;white-space:nowrap;vertical-align:.1em}
+.tag.ok{background:var(--ok-bg);color:var(--ok)}
+.tag.no{background:var(--no-bg);color:var(--no)}
+li.done .item .ttl{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--p3-rule)}
+
+footer{border-top:1px solid var(--rule);margin-top:52px;padding:30px 0 60px;color:var(--muted);font-size:13.5px}
+footer h4{margin-top:0}
+footer ul{padding-left:18px;font-size:13px}
+footer a{word-break:break-word}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="mast">
+<div class="mast-in">
+  <p class="eyebrow">Flight model specification &middot; v1</p>
+  <h1>Newtonian Flight Feel</h1>
+  <p class="dek">An engineering breakdown of Star Citizen&rsquo;s IFCS and Elite Dangerous&rsquo;s fly&#8209;by&#8209;wire model &mdash; what each system actually computes, with the numbers &mdash; and a prioritised feature checklist for reproducing that feel in a mod.</p>
+  <dl class="meta">
+    <div><dt>Primary source</dt><dd>Pritchett, IFCS 3.2</dd></div>
+    <div><dt>SC build basis</dt><dd>3.23 &rarr; 4.8.1</dd></div>
+    <div><dt>Ship data</dt><dd>n = 47 hulls</dd></div>
+    <div><dt>Checklist items</dt><dd id="mCount">31</dd></div>
+  </dl>
+</div>
+</header>
+
+<div class="wrap layout">
+<nav class="toc" aria-label="Contents">
+  <p class="tl">Contents</p>
+  <ol>
+    <li><a href="#s1"><span class="n">1</span><span>IFCS mechanics</span></a></li>
+    <li><a href="#s2"><span class="n">2</span><span>Control mapping &amp; mouse</span></a></li>
+    <li><a href="#s3"><span class="n">3</span><span>Elite Dangerous</span></a></li>
+    <li><a href="#s4"><span class="n">4</span><span>What creates weight</span></a></li>
+    <li><a href="#s5"><span class="n">5</span><span>Feature checklist</span></a></li>
+    <li><a href="#s6"><span class="n">6</span><span>Target-engine reality</span></a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+<div class="sechead"><span class="secnum">01</span><h2>Star Citizen: IFCS mechanics</h2></div>
+<p class="lede">The single most important framing, in the words of the engineer who wrote it: <strong>IFCS is not the flight model.</strong> The flight model is a plain 6&#8209;DOF rigid&#8209;body Newtonian simulation. IFCS is a control system layered on top that converts pilot intent into per&#8209;thruster commands. Every characteristic behaviour below is a consequence of that split.</p>
+
+<div class="quote">Ship motion is induced by its thrusters, with each individual thruster generating a limited amount of force at its mount point. Depending on the direction of a thruster and its mount point relative to the ship&rsquo;s center of mass, each thruster will generate both a force <em>and</em> torque on the ship.
+<cite>John Pritchett, CIG Senior Physics Programmer &mdash; <em>IFCS and Flight Physics, Star Citizen 3.2</em></cite></div>
+
+<h3>1.1 The control pipeline</h3>
+<p>Six stages. A mod that reproduces the feel needs stages 2, 3 and 6 at minimum; stages 4 and 5 are what make it survive damage and disturbance.</p>
+
+<div class="diag">
+<svg viewBox="0 0 900 168" role="img" aria-label="IFCS control pipeline: pilot input feeds a planner producing goal motion profiles, which drive a feedforward controller and, combined with sensor feedback, a PID feedback controller; both sum into the propulsion control system, which drives thrusters, whose summed force and torque enter the physics engine; sensors close the loop.">
+  <defs>
+    <marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="currentColor"/></marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.2" color="var(--faint)">
+    <line x1="106" y1="46" x2="140" y2="46" marker-end="url(#ar)"/>
+    <line x1="234" y1="46" x2="268" y2="46" marker-end="url(#ar)"/>
+    <line x1="380" y1="46" x2="430" y2="46" marker-end="url(#ar)"/>
+    <path d="M324,68 L324,110 L430,110" marker-end="url(#ar)"/>
+    <line x1="558" y1="46" x2="592" y2="46" marker-end="url(#ar)"/>
+    <path d="M494,132 L494,150 L720,150 L720,68" marker-end="url(#ar)"/>
+    <line x1="686" y1="46" x2="720" y2="46" marker-end="url(#ar)" stroke="none"/>
+    <line x1="718" y1="46" x2="752" y2="46" marker-end="url(#ar)"/>
+  </g>
+  <g font-family="IBM Plex Mono, monospace" font-size="10.5" font-weight="500">
+    <g fill="var(--surface-2)" stroke="var(--rule)" stroke-width="1">
+      <rect x="10" y="26" width="96" height="40" rx="3"/>
+      <rect x="140" y="26" width="94" height="40" rx="3"/>
+      <rect x="268" y="26" width="112" height="40" rx="3"/>
+      <rect x="430" y="26" width="128" height="40" rx="3"/>
+      <rect x="430" y="92" width="128" height="40" rx="3"/>
+      <rect x="592" y="26" width="94" height="40" rx="3"/>
+      <rect x="752" y="26" width="138" height="40" rx="3"/>
+    </g>
+    <g fill="var(--ink-2)" text-anchor="middle">
+      <text x="58" y="43">PILOT</text><text x="58" y="56">INPUT</text>
+      <text x="187" y="43">PLANNER</text><text x="187" y="56">profiles</text>
+      <text x="324" y="43">GOAL MOTION</text><text x="324" y="56">v / a / pos</text>
+      <text x="494" y="43">FEEDFORWARD</text><text x="494" y="56">transient</text>
+      <text x="494" y="109">FEEDBACK</text><text x="494" y="122">PID / RCS</text>
+      <text x="639" y="43">PCS</text><text x="639" y="56">per&#8209;thruster</text>
+      <text x="821" y="43">RIGID BODY</text><text x="821" y="56">&Sigma;F, &Sigma;&tau;</text>
+    </g>
+    <text x="612" y="146" fill="var(--faint)" font-size="9.5">sensor feedback &mdash; measured vs. desired state</text>
+  </g>
+</svg>
+</div>
+
+<h3>1.2 Input is interpreted three different ways</h3>
+<p>This table is the heart of the coupled/decoupled distinction, and almost every guide gets it wrong. The mode does not change the physics; it changes <em>what quantity the stick commands</em>.</p>
+<div class="tw"><table>
+<caption>Control interpretation by axis and mode &mdash; IFCS 3.2</caption>
+<thead><tr><th>Control type</th><th>Input means</th><th>Used for</th></tr></thead>
+<tbody>
+<tr><td class="m">Acceleration</td><td>% of max available acceleration on that axis</td><td><strong>Decoupled linear control only.</strong> Available accel derives from current thrust, mass and MOI.</td></tr>
+<tr><td class="m">Velocity</td><td>% of max allowed velocity on that axis</td><td>Coupled throttle, coupled strafe, <strong>and rotational control in both modes</strong></td></tr>
+<tr><td class="m">Position</td><td>goal position or goal attitude</td><td>AI, autopilot, auto take-off/landing, quantum alignment</td></tr>
+</tbody></table></div>
+
+<div class="note"><p class="nt">The decoupled definition, precisely</p>
+<p>Decoupled is <strong>not</strong> &ldquo;Newtonian mode&rdquo; &mdash; the sim is always Newtonian. Decoupled changes exactly three things: throttle is disabled entirely; the three linear strafe axes switch from <em>velocity</em> command to <em>acceleration</em> command; and the translational-stability (anti-slide) subsystem stops trying to pin the velocity vector to the nose. <strong>Rotational control is byte-for-byte identical in both modes</strong> &mdash; still velocity-controlled, still damped, still limited. This is why decoupled in SC does not feel like Elite&rsquo;s FA-off, which <em>does</em> remove rotational damping.</p></div>
+
+<h3>1.3 Thruster model and asymmetry</h3>
+<p>Four thruster classes, each a point force applied at a mount point, therefore each producing torque as a side effect:</p>
+<ul>
+<li><strong>Main</strong> &mdash; the majority of sustainable thrust and almost all forward thrust.</li>
+<li><strong>Retro</strong> &mdash; the majority of braking/backward thrust.</li>
+<li><strong>Maneuvering</strong> &mdash; scattered over the hull; provides <em>some</em> translation and the <em>majority of attitude control</em>, in intermittent bursts.</li>
+<li><strong>VTOL</strong> &mdash; sustainable vertical thrust for hover and vertical launch.</li>
+<li><strong>CMG</strong> (Control Moment Gyro) &mdash; a pure-torque generator whose mount position is irrelevant; usually near the cockpit so a ship retains minimal rotational authority after losing thrusters.</li>
+</ul>
+<p>The PCS clusters available generators into <em>pure force</em> and <em>pure torque</em> groups: a pure force needs either one thruster firing through the COM or two-plus balanced so torques cancel; a pure torque needs two-plus whose forces cancel. Unbalanced thrusters are still allowed for linear control, with CMGs countering the parasitic torque and a clamp on how far attitude may drift &mdash; otherwise a damaged ship would lose all linear control.</p>
+
+<div class="tw"><table>
+<caption>Thrust asymmetry by class, from shipped ship data (total axis capacity &divide; hull mass)</caption>
+<thead><tr><th>Ship</th><th class="n">Mass kg</th><th class="n">Main</th><th class="n">Retro</th><th class="n">Retro/Main</th><th class="n">Maneuver</th></tr></thead>
+<tbody>
+<tr><td class="ship">Arrow</td><td class="n">30,510</td><td class="n">15.24 g</td><td class="n">5.08 g</td><td class="n">33%</td><td class="n">11.85 g</td></tr>
+<tr><td class="ship">Razor</td><td class="n">10,861</td><td class="n">19.14 g</td><td class="n">4.18 g</td><td class="n">22%</td><td class="n">29.61 g</td></tr>
+<tr><td class="ship">300i</td><td class="n">69,677</td><td class="n">18.43 g</td><td class="n">4.41 g</td><td class="n">24%</td><td class="n">24.41 g</td></tr>
+<tr><td class="ship">Buccaneer</td><td class="n">36,527</td><td class="n">17.52 g</td><td class="n">4.08 g</td><td class="n">23%</td><td class="n">25.09 g</td></tr>
+<tr><td class="ship">Sabre</td><td class="n">83,093</td><td class="n">10.80 g</td><td class="n">2.21 g</td><td class="n">20%</td><td class="n">7.02 g</td></tr>
+<tr><td class="ship">Vanguard Warden</td><td class="n">238,070</td><td class="n">9.87 g</td><td class="n">3.54 g</td><td class="n">36%</td><td class="n">14.42 g</td></tr>
+<tr><td class="ship">Constellation</td><td class="n">386,857</td><td class="n">5.87 g</td><td class="n">2.94 g</td><td class="n">50%</td><td class="n">3.49 g</td></tr>
+<tr><td class="ship">Hammerhead</td><td class="n">4,542,311</td><td class="n">5.22 g</td><td class="n">2.09 g</td><td class="n">40%</td><td class="n">9.61 g</td></tr>
+<tr><td class="ship">Reclaimer</td><td class="n">9,509,854</td><td class="n">2.09 g</td><td class="n">1.57 g</td><td class="n">75%</td><td class="n">6.27 g</td></tr>
+</tbody></table></div>
+<p><strong>Read this as:</strong> retro is roughly <strong>20&ndash;35% of main</strong> on fighters, converging toward parity on capitals. Maneuvering capacity looks large but is the <em>sum across all mav thrusters and all axes</em> &mdash; per-axis strafe lands well under main. The independent confirmation is the boost-speed pair: <strong>rearward boost speed is consistently ~50% of forward boost speed</strong> across every hull. Design rule: <code>forward &gt; vertical &gt; lateral &gt; reverse</code>.</p>
+
+<h3>1.4 Master Modes: SCM and NAV</h3>
+<p>Since Alpha 3.23 a ship is always in exactly one of two master modes. This replaced the older <em>Precision / SCM / Cruise</em> triad and the separate afterburner regime.</p>
+<div class="vs">
+<div class="a"><h5>SCM &mdash; Standard Control Mode</h5>
+<ul><li>Shields regenerate; weapons, countermeasures and all operator modes (GUNS, MISL, SCN, mining, salvage) live</li><li>Hard per-hull speed cap, typically <strong>110&ndash;280 m/s</strong></li><li>Full maneuverability; quantum drive unavailable</li><li>Boost may push <em>slightly</em> past the cap while capacitor lasts</li></ul></div>
+<div class="b" style="--x:0"><h5>NAV &mdash; Navigation Mode</h5>
+<ul><li>Shields collapse into a buffer; weapons and countermeasures offline</li><li>Top speed <strong>~870&ndash;1575 m/s</strong>, i.e. roughly <strong>5&times; SCM</strong></li><li>Quantum drive auto-spools; signature balloons</li><li>Operator modes: QTM (default), FLT (max engine thrust), SCN</li></ul></div>
+</div>
+<p>Swap is a <strong>long press of <span class="kbd">B</span></strong> with a per-ship spool delay gated by quantum drive size. The tap-to-cycle variant ships deliberately unbound to prevent accidental swaps. Historically: <em>Precision</em> was the takeoff mode with heavily reduced max velocity and rescaled throttle; <em>SCM</em> derived its cap from <code>F/m &times; T</code> &mdash; the braking ability on the strongest turning axis; <em>Cruise</em> traded control for ~5&times; velocity with the nose locked to the velocity vector.</p>
+
+<div class="tw"><table>
+<caption>Speed and agility envelope by hull class</caption>
+<thead><tr><th>Ship</th><th class="n">SCM</th><th class="n">NAV</th><th class="n">Boost fwd</th><th class="n">Boost back</th><th class="n">Pitch</th><th class="n">Yaw</th><th class="n">Roll</th><th class="n">Yaw/Pitch</th></tr></thead>
+<tbody>
+<tr><td class="ship">M50</td><td class="n">280</td><td class="n">1575</td><td class="n">&mdash;</td><td class="n">&mdash;</td><td class="n">55</td><td class="n">55</td><td class="n">200</td><td class="n">1.00</td></tr>
+<tr><td class="ship">Razor</td><td class="n">265</td><td class="n">1450</td><td class="n">595</td><td class="n">290</td><td class="n">59</td><td class="n">52</td><td class="n">205</td><td class="n">0.88</td></tr>
+<tr><td class="ship">Avenger Titan</td><td class="n">262</td><td class="n">1425</td><td class="n">610</td><td class="n">280</td><td class="n">53</td><td class="n">48</td><td class="n">190</td><td class="n">0.91</td></tr>
+<tr><td class="ship">Arrow</td><td class="n">229</td><td class="n">1215</td><td class="n">515</td><td class="n">265</td><td class="n">75</td><td class="n">57</td><td class="n">205</td><td class="n">0.76</td></tr>
+<tr><td class="ship">Gladius</td><td class="n">226</td><td class="n">1193</td><td class="n">520</td><td class="n">268</td><td class="n">68</td><td class="n">52</td><td class="n">200</td><td class="n">0.76</td></tr>
+<tr><td class="ship">F7A Hornet Mk II</td><td class="n">220</td><td class="n">1146</td><td class="n">479</td><td class="n">249</td><td class="n">50</td><td class="n">40</td><td class="n">143</td><td class="n">0.80</td></tr>
+<tr><td class="ship">Cutlass Black</td><td class="n">217</td><td class="n">1150</td><td class="n">465</td><td class="n">230</td><td class="n">39</td><td class="n">35</td><td class="n">110</td><td class="n">0.90</td></tr>
+<tr><td class="ship">Constellation</td><td class="n">190</td><td class="n">1000</td><td class="n">390</td><td class="n">191</td><td class="n">25</td><td class="n">21</td><td class="n">45</td><td class="n">0.84</td></tr>
+<tr><td class="ship">Hammerhead</td><td class="n">160</td><td class="n">1000</td><td class="n">340</td><td class="n">170</td><td class="n">20</td><td class="n">20</td><td class="n">30</td><td class="n">1.00</td></tr>
+<tr><td class="ship">Caterpillar</td><td class="n">130</td><td class="n">900</td><td class="n">300</td><td class="n">120</td><td class="n">16</td><td class="n">16</td><td class="n">25</td><td class="n">1.00</td></tr>
+<tr><td class="ship">890 Jump</td><td class="n">110</td><td class="n">915</td><td class="n">280</td><td class="n">115</td><td class="n">10</td><td class="n">10</td><td class="n">15</td><td class="n">1.00</td></tr>
+</tbody></table></div>
+<p>Speeds m/s, rates &deg;/s. Note the shape: <strong>roll is 2.5&ndash;3&times; pitch on fighters and collapses to ~1.2&times; on capitals</strong>; yaw sits at 0.76&ndash;0.91 of pitch &mdash; noticeably slower, but nothing like Elite&rsquo;s deliberate crippling. Boost-forward runs <strong>2.1&ndash;2.5&times; SCM</strong>.</p>
+
+<h3>1.5 Throttle, speed limiter, acceleration limiter</h3>
+<p>Modern SC has <strong>no separate throttle concept in the action layer at all</strong>. Forward/back throttle <em>is</em> the longitudinal strafe axis &mdash; <code>v_strafe_forward</code> is literally labelled &ldquo;Throttle &ndash; Increase&rdquo;. Forward thrust is just the +Z member of the same 6&#8209;DOF strafe set as A/D/Space/Ctrl. Three distinct absolute-vs-relative pairs exist and are routinely confused:</p>
+<div class="tw"><table>
+<caption>Absolute vs relative, three separate systems</caption>
+<thead><tr><th>System</th><th>Absolute</th><th>Relative</th></tr></thead>
+<tbody>
+<tr><td><strong>Historic throttle</strong><br><span style="font-size:12.5px;color:var(--muted)">removed in 4.x</span></td><td class="m">v_throttle_abs</td><td class="m">v_throttle_rel</td></tr>
+<tr><td colspan="2" style="color:var(--muted);font-size:13px">Position control: lever at 60% &rarr; throttle 60%.</td><td style="color:var(--muted);font-size:13px">Rate control: deflection is a <em>rate of change</em>; the setpoint integrates and holds on release. This is what lets a self-centring device drive a throttle.</td></tr>
+<tr><td><strong>Thrust axis range</strong></td><td class="m">flight_thrust_abs_full<br>flight_thrust_abs_half</td><td class="m">&mdash;</td></tr>
+<tr><td colspan="3" style="color:var(--muted);font-size:13px"><code>abs_full</code>: axis spans &minus;100&hellip;+100%, mechanical centre = zero thrust. <code>abs_half</code>: axis spans 0&hellip;100% forward only, inverted because idle sits at the back stop.</td></tr>
+<tr><td><strong>Speed limiter</strong></td><td class="m">v_ifcs_speed_limiter_abs</td><td class="m">v_ifcs_speed_limiter_rel</td></tr>
+<tr><td colspan="3" style="color:var(--muted);font-size:13px">Bound to <span class="kbd">LAlt</span>+wheel as discrete steps in 4.x (it was the bare wheel in 3.23). Sets the ceiling IFCS will not let velocity exceed; the <em>Speed Regulation</em> subsystem applies corrective deceleration whenever the ship is over it, for any reason. Strictly enforced &mdash; the one subsystem the pilot may never disable.</td></tr>
+<tr><td><strong>Acceleration limiter</strong></td><td class="m">v_accel_range_abs</td><td class="m">v_accel_range_rel</td></tr>
+<tr><td colspan="3" style="color:var(--muted);font-size:13px"><span class="kbd">RAlt</span>+wheel. Same semantics applied to commanded acceleration magnitude rather than velocity ceiling.</td></tr>
+</tbody></table></div>
+<p><strong>Sticky / cruise throttle</strong> (<span class="kbd">LAlt</span>+<span class="kbd">C</span>): W/S integrates a persistent velocity setpoint that holds where you leave it, with <span class="kbd">X</span> zeroing it. Normal throttle is spring-return: release and commanded velocity decays toward the <em>trim</em> point. <strong>Trim</strong> shifts that neutral point so a centring device holds 50% or 75% hands-off, with subsequent input scaled relative to the new baseline.</p>
+
+<h3>1.6 Boost</h3>
+<p>Boost is deliberately <em>non-specific</em>: it raises every thruster&rsquo;s output, so the same button buys faster acceleration, harder braking, a tighter controlled turn radius, a higher terminal velocity in drag, or faster spin recovery. Since 3.23 there is one action &mdash; internally still <code>v_afterburner</code>, labelled &ldquo;Boost&rdquo;, on <span class="kbd">LShift</span>.</p>
+<div class="tw"><table>
+<caption>Boost capacitor parameters &mdash; consistent across hull classes</caption>
+<thead><tr><th>Ship</th><th class="n">Capacitor</th><th class="n">Idle cost/s</th><th class="n">Regen/s</th><th class="n">Ramp&#8209;up</th><th class="n">Ramp&#8209;down</th><th class="n">Rotation &times;</th></tr></thead>
+<tbody>
+<tr><td class="ship">Arrow</td><td class="n">20</td><td class="n">1.0</td><td class="n">0.75</td><td class="n">0.6 s</td><td class="n">0.2 s</td><td class="n">1.20</td></tr>
+<tr><td class="ship">300i</td><td class="n">20</td><td class="n">1.0</td><td class="n">0.75</td><td class="n">0.4 s</td><td class="n">0.2 s</td><td class="n">1.20</td></tr>
+<tr><td class="ship">Buccaneer</td><td class="n">25</td><td class="n">1.0</td><td class="n">0.75</td><td class="n">0.4 s</td><td class="n">0.2 s</td><td class="n">1.20</td></tr>
+<tr><td class="ship">Sabre</td><td class="n">20</td><td class="n">1.0</td><td class="n">0.75</td><td class="n">0.6 s</td><td class="n">0.2 s</td><td class="n">1.20</td></tr>
+<tr><td class="ship">Constellation</td><td class="n">20</td><td class="n">1.0</td><td class="n">0.75</td><td class="n">1.5 s</td><td class="n">0.2 s</td><td class="n">1.20</td></tr>
+<tr><td class="ship">Hammerhead</td><td class="n">20</td><td class="n">1.0</td><td class="n">0.75</td><td class="n">2.0 s</td><td class="n">0.2 s</td><td class="n">1.50</td></tr>
+</tbody></table></div>
+<p>The numbers are strikingly uniform: <strong>20 units of capacitor at 1/s = 20 s of continuous boost; 0.75/s regen = ~27 s to refill.</strong> The differentiator is <strong>ramp-up time, which scales with hull size</strong> (0.4 s on a light fighter, 2.0 s on a Hammerhead) &mdash; boost is not instant, and that ramp is a large part of why heavy ships feel heavy. The rotation multiplier is a flat <strong>&times;1.20</strong> on nearly every hull. Critically, <strong>boost multiplies rotation rates as well as thrust</strong> &mdash; it is an agility button, not just a speed button.</p>
+
+<h3>1.7 The assist subsystems</h3>
+<p>The feedforward controller sums contributions from independent subsystems. In 4.x each became individually bindable with a toggle/on/off triple &mdash; a good template for a mod&rsquo;s control surface.</p>
+<div class="tw"><table>
+<caption>IFCS feedforward subsystems</caption>
+<thead><tr><th>Subsystem</th><th>What it computes</th></tr></thead>
+<tbody>
+<tr><td><strong>Translational stability</strong><br><span style="font-size:12px;color:var(--muted)">anti-slide</span></td><td>Forward thrust to replace velocity lost in a turn, plus lateral/vertical thrust to cancel the velocity gained. With enough thrust a ship flies a <em>perfect circle with zero slide</em> at the expected nose-forward speed. <strong>Once velocity &times; turn rate exceeds available stabilising thrust, it starts sliding</strong> &mdash; and that threshold is the single most important feel parameter in the whole system.</td></tr>
+<tr><td><strong>Rotational stability</strong><br><span style="font-size:12px;color:var(--muted)">anti-tumble</span></td><td>Counter-torque holding rotation about the ship&rsquo;s <em>local</em> axes. Because local axes are generally <em>not</em> the principal axes of inertia, sustained angular velocity generates large torques about the other axes; without correction the ship tumbles. IFCS queries this subsystem for the <strong>maximum stable rotational velocity per axis</strong> &mdash; which therefore <em>drops</em> as the ship loses thrust to damage or power loss.</td></tr>
+<tr><td><strong>Comstab</strong><br><span style="font-size:12px;color:var(--muted)">command-level stability</span></td><td>Slows the ship to the maximum speed at which it still has enough lateral/vertical thrust to avoid sliding during the current turn. Effectively an automatic optimal-cornering-speed governor &mdash; SC&rsquo;s functional equivalent of Elite&rsquo;s blue zone, but implemented as an active speed limiter rather than a rate penalty.</td></tr>
+<tr><td><strong>G-force safety</strong></td><td>Clamps commanded acceleration below a threshold. Vertical G causes blackout (~7&nbsp;g for 4.5&nbsp;s) and redout (&minus;2 to &minus;3&nbsp;g for 3&ndash;5&nbsp;s); longitudinal and lateral G trigger loss of consciousness too. Flight suits raise the threshold. G-Safe disengages while boosting.</td></tr>
+<tr><td><strong>Gravity compensation</strong></td><td>Uses VTOL or mav thrusters to null gravity. Because compensation is subtracted first, a ship with symmetric up/down thrust <strong>accelerates downward faster than upward</strong> in gravity.</td></tr>
+<tr><td><strong>Drag compensation</strong></td><td>Predicts atmospheric drag so it can be fed forward rather than corrected after the fact. Consequence: <strong>a ship is more responsive slowing down in atmosphere than speeding up</strong>, since drag assists deceleration and opposes acceleration.</td></tr>
+<tr><td><strong>Speed regulation</strong></td><td>Corrective deceleration whenever velocity exceeds the cap. Strictly enforced; not disableable.</td></tr>
+<tr><td><strong>Proximity assist</strong><br><span style="font-size:12px;color:var(--muted)">Automatic Precision Mode</span></td><td>With gear extended, clamps speed to <strong>20&ndash;30 m/s</strong> and reduces rotation rates for docking. Rewritten in recent builds to derive adaptive limits from environment and ship stability.</td></tr>
+</tbody></table></div>
+
+<h3>1.8 Rotation: the motion profile, and why it feels weighty</h3>
+<p>Rotational input is a <em>velocity</em> command in both coupled and decoupled. What gives it mass is the motion profile between the current and goal rate. SC explicitly rejects 2nd-order (instant acceleration change) control:</p>
+<div class="quote">If we would allow our ships to switch between zero and maximum acceleration instantaneously, the motion of our ships would be extremely stiff and unnatural. Therefore, we place a limit on how quickly acceleration can change, and this limit is called &ldquo;jerk&rdquo;.<cite>Pritchett, IFCS 3.2</cite></div>
+<ul>
+<li><strong>2nd order</strong> (quadratic) &mdash; infinite jerk. Used only for capitals where accelerations are low.</li>
+<li><strong>3rd order</strong> (cubic) &mdash; finite jerk, linear acceleration. Predictable; good for velocity control and waypoints, but too expensive when the control state changes every frame.</li>
+<li><strong>Transient</strong> (exponential, continuous in <em>all</em> higher-order derivatives) &mdash; <strong>the primary profile for fighters and racers.</strong> Restored as the default in IFCS 3.0 after a 3rd-order interlude.</li>
+</ul>
+<p>Feedback is a <strong>critically damped PID</strong> in the Reaction Control System, correcting the error between the feedforward profile and measured state. Design consequence: there is no overshoot-and-oscillate; there <em>is</em> a settling time, and the ship never snaps.</p>
+<p>The system also injects deliberate imperfection &mdash; a low-level <strong>thruster error overlay</strong> on all flight, scaling with damage, overheating and component failure. It shows up as subtle nose play when firing at capacity or settling at zero velocity, and becomes extreme under serious damage.</p>
+
+<h3>1.9 ESP &mdash; Enhanced Stick Precision</h3>
+<p>ESP is far more sophisticated than the &ldquo;sensitivity dampening near the target&rdquo; description in circulation. It is a <strong>blend toward an ideal tracking solution, gated by how well the player&rsquo;s own input already correlates with that solution.</strong> The design goal is that the player cannot detect it until it is switched off.</p>
+<ol>
+<li>Query the targeting system for time-to-hit <code>t</code> with the last-fired weapon.</li>
+<li>Project target position: <code>TargetPos = EnemyPos + &Delta;Vel&middot;t + 0.5&middot;&Delta;Accel&middot;t&sup2;</code></li>
+<li>Compute <strong>match rates</strong> &mdash; the pitch/yaw rates that hold the target at a constant screen position without closing: <code>Radial = TargetPos &minus; ShipPos</code>; <code>RadialVel = (TargetVel&middot;Radial / Radial&middot;Radial)&middot;Radial</code>; <code>TanVel = TargetVel &minus; RadialVel</code>; <code>&omega; = |TanVel| / |Radial|</code>.</li>
+<li>Compute <strong>close rates</strong> &mdash; the rates that bring the nose onto the radial vector with zero overshoot.</li>
+<li>Blend match and close by <strong>angular correlation between the ship&rsquo;s forward vector and the radial vector</strong>, using a tight exponential: <strong>full correlation at 0&deg;, zero correlation at ~2.4&deg;</strong>. At full correlation the goal is <em>match only</em> (track without being dragged onto centre-of-mass) &mdash; this small window is what lets the player refine the shot relative to the ideal solution, and is explicitly called out as an essential part of the design.</li>
+<li>Blend the player&rsquo;s raw pitch/yaw with the goal rates by the correlation between them, per axis, by magnitude and direction. Higher correlation &rarr; more blend.</li>
+<li>Return the corrected rates to IFCS <em>in place of</em> the raw input.</li>
+</ol>
+<p>ESP ships enabled with <strong>no default key</strong>. CIG&rsquo;s own recommendation for using it well: turn <em>off</em> comstab and G-safe.</p>
+
+<h3>1.10 Atmospheric flight</h3>
+<p>SC ships are always thruster-flown; they do not rely on aerodynamic lift even in atmosphere. The atmospheric layer adds: velocity-squared <strong>drag</strong> with a <em>per-axis</em> coefficient and a dynamically computed cross-sectional area per local axis; a <strong>centre of pressure</strong> (the area centroid) that generates torque whenever it is offset from the COM along the velocity vector; placeholder <strong>turbulence</strong> scaled by density and airspeed; an altitude-dependent density model; a <strong>terminal velocity</strong> that clamps below the artificial cap at low altitude or with degraded thrusters; and a <strong>safe velocity</strong> above which drag loads damage the structure. Lift is explicitly <em>not</em> implemented. Real control surfaces and stall are still forward-looking work.</p>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+<div class="sechead"><span class="secnum">02</span><h2>Control mapping and the mouse question</h2></div>
+<p class="lede">The mouse-mode distinction is the largest single feel factor for a keyboard-and-mouse player, and it reduces to one clean statement: <strong>the two modes differ by an integrator</strong>. Everything else follows.</p>
+
+<h3>2.1 Default keyboard + mouse bindings (Alpha 4.8.1)</h3>
+<div class="tw"><table>
+<caption>Flight bindings, from the shipped defaultProfile.xml</caption>
+<thead><tr><th>Function</th><th>Bind</th><th>Action name</th></tr></thead>
+<tbody>
+<tr><td>Pitch / yaw</td><td class="m">Mouse Y / Mouse X</td><td class="m">v_pitch_mouse, v_yaw_mouse</td></tr>
+<tr><td>Roll</td><td class="m"><span class="kbd">Q</span> / <span class="kbd">E</span></td><td class="m">v_roll_left / _right</td></tr>
+<tr><td>Strafe lateral</td><td class="m"><span class="kbd">A</span> / <span class="kbd">D</span></td><td class="m">v_strafe_left / _right</td></tr>
+<tr><td>Strafe vertical</td><td class="m"><span class="kbd">Space</span> / <span class="kbd">LCtrl</span></td><td class="m">v_strafe_up / _down</td></tr>
+<tr><td>Throttle fwd / back</td><td class="m"><span class="kbd">W</span> / <span class="kbd">S</span></td><td class="m">v_strafe_forward / _back</td></tr>
+<tr><td>Space brake</td><td class="m"><span class="kbd">X</span></td><td class="m">v_space_brake</td></tr>
+<tr><td>Boost</td><td class="m"><span class="kbd">LShift</span></td><td class="m">v_afterburner</td></tr>
+<tr><td><strong>Decouple toggle</strong></td><td class="m"><span class="kbd">C</span> (tap)</td><td class="m">v_ifcs_vector_decoupling_toggle</td></tr>
+<tr><td>Master mode SCM/NAV</td><td class="m"><span class="kbd">B</span> (long press)</td><td class="m">v_master_mode_cycle_long</td></tr>
+<tr><td>Speed limiter &plusmn;</td><td class="m"><span class="kbd">LAlt</span>+wheel</td><td class="m">v_ifcs_speed_limiter_increment</td></tr>
+<tr><td>Accel limiter &plusmn;</td><td class="m"><span class="kbd">RAlt</span>+wheel</td><td class="m">v_accel_range_increment</td></tr>
+<tr><td>Cruise / sticky throttle</td><td class="m"><span class="kbd">LAlt</span>+<span class="kbd">C</span></td><td class="m">v_ifcs_throttle_swap_mode</td></tr>
+<tr><td>Gimbal lock toggle</td><td class="m"><span class="kbd">G</span></td><td class="m">v_weapon_gimbals_state_toggle</td></tr>
+<tr><td>Gimbal aim source</td><td class="m">unbound</td><td class="m">v_weapon_gimbals_unlocked_cycle_source</td></tr>
+<tr><td>ESP toggle / hold</td><td class="m">unbound</td><td class="m">v_ifcs_toggle_esp, v_ifcs_esp_hold</td></tr>
+<tr><td>Landing gear</td><td class="m"><span class="kbd">N</span> tap / long = autoland</td><td class="m">v_toggle_landing_system, v_autoland</td></tr>
+<tr><td>VTOL</td><td class="m"><span class="kbd">K</span></td><td class="m">v_vtol_toggle</td></tr>
+<tr><td>Lock pitch/yaw</td><td class="m"><span class="kbd">RShift</span></td><td class="m">v_lock_rotation</td></tr>
+<tr><td>Mouse mode cycle</td><td class="m"><strong>unbound</strong></td><td class="m">v_toggle_relative_mouse_mode</td></tr>
+</tbody></table></div>
+<div class="note"><p class="nt">Three corrections to stale guides</p>
+<p>Decouple is <span class="kbd">C</span>, <strong>not CapsLock</strong> &mdash; CapsLock appears in no shipped profile from 2.x onward; it was <span class="kbd">V</span> pre-3.23, then moved to <span class="kbd">C</span>, displacing cruise control to <span class="kbd">LAlt</span>+<span class="kbd">C</span>. The bare mouse wheel is <strong>no longer</strong> the speed limiter &mdash; in 4.x it cycles weapon groups. And <code>v_target_match_vel</code> (&ldquo;Match Target Speed&rdquo;) <strong>was removed</strong> between 3.23.1 and 4.8.1; SC currently has no match-target-velocity feature.</p></div>
+
+<h3>2.2 VJoy vs Relative: the integrator</h3>
+<div class="vs">
+<div class="a"><h5>VJoy mode &mdash; the default</h5>
+<ul><li>Mouse deltas are <strong>integrated</strong> into the deflection of a virtual stick &mdash; a persistent state variable, drawn on the HUD as a line from screen centre to the reticle</li><li>Deflection maps to a commanded <em>angular rate</em></li><li><strong>The virtual stick does not self-centre.</strong> Stop moving the mouse and the ship keeps rotating at that rate indefinitely</li><li>Because the reticle has a real screen position, <strong>unlocked gimbals can slave to it</strong></li><li>ESP operates on this reticle</li></ul></div>
+<div class="b"><h5>Relative mode &mdash; &ldquo;FPS style&rdquo;</h5>
+<ul><li>Per-frame mouse delta <em>is</em> the rate command &mdash; no cursor, no persistent offset</li><li>Stop moving the mouse and the command returns to zero; rotation stops</li><li>Effectively a spring-centred stick with infinite spring rate</li><li>With no off-centre reticle, <strong>gimbals are effectively locked forward</strong> &mdash; the ship is the aiming device</li><li>Per-axis sensitivity and inversion under <code>av_relative_mode</code></li></ul></div>
+</div>
+<p><strong>The mechanical statement:</strong> every SC input path terminates in a goal <em>rate</em>, never a goal attitude &mdash; there is no position-control loop from player to ship orientation anywhere in the stack. VJoy inserts an <em>extra integrator</em> between hand and rate command, so the mouse effectively controls rotational <em>acceleration</em>, two integrations from attitude. Relative mode removes it: one integration, exactly like an FPS camera. <strong>That second-order versus first-order plant is the entire &ldquo;floaty vs direct&rdquo; argument</strong> &mdash; and it is why relative-mode players stop on target more cleanly while VJoy players hold steadier low rates. Underneath both sits the jerk limit, a third-order constraint added in 3.10.</p>
+<p>The historical <em>Interactive Mode</em> was the free-floating-crosshair scheme whose competitive advantage was that a mouse user could hold a firing solution the airframe itself could never achieve. CIG did not delete it &mdash; in 3.10 they made VJoy the default and <strong>separated the aim-point channel from the flight-command channel</strong>, gating gimbal pointing behind an explicit gimbal state and an explicit source selection (VJoy vs View). That separation, not the removal of an input mode, is what neutralised the advantage.</p>
+<p>Input conditioning: mouse acceleration and mouse smoothing both default to <strong>0.00</strong>. There is <strong>no mouse deadzone setting</strong> &mdash; the &ldquo;deadzone&rdquo; players describe is the VJoy integrator&rsquo;s near-centre behaviour. Sensitivity curves are piecewise-linear <code>&lt;nonlinearity_curve&gt;</code> lookups per axis per device, arranged in an inheriting hierarchy; the shipped gamepad curve attenuates ~85% over the first 30% of travel.</p>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+<div class="sechead"><span class="secnum">03</span><h2>Elite Dangerous, for contrast</h2></div>
+<p class="lede">Elite is also a Newtonian rigid body, but wrapped in a much harder fly&#8209;by&#8209;wire layer. Frontier are explicit that the restrictions are arbitrary and deliberate: <em>&ldquo;a pretty complex set of arbitrary restrictions overlaid on a Newtonian mechanics model, designed to work together to create the atmospheric flight of cinematic sci-fi.&rdquo;</em></p>
+
+<h3>3.1 The four hard clamps</h3>
+<ul>
+<li>Maximum speed is limited by ship computers &mdash; a <strong>drag-like clamp, not a thrust limit</strong>. Frontier&rsquo;s stated reason is purely combat framing: faster ships end up further apart, which ruins shot quality and the ability to read an opponent.</li>
+<li>Rotation rates are arbitrarily throttled to a fixed per-hull &omega;<sub>max</sub>.</li>
+<li><strong>Thruster power is reduced within 25 m/s of both 0 and max speed</strong> &mdash; a deliberate soft zone at each end, mostly a docking aid.</li>
+<li>Maneuvering thrusters offer significantly greater thrust than the main engine.</li>
+</ul>
+<p>Universal direction caps, constant across every hull: <strong>reverse = 60% of forward max; lateral/vertical = 80% of forward max.</strong> Measured acceleration asymmetry runs lateral &asymp; <strong>0.66&times;</strong> forward (median over 26 hulls; range 0.29 on an Imperial Cutter to 1.00 on an Anaconda) and reverse &asymp; <strong>0.78&times;</strong> forward.</p>
+
+<h3>3.2 Flight Assist</h3>
+<p>FA is three separable behaviours, and understanding them separately is what makes the SC comparison legible:</p>
+<ol>
+<li><strong>Linear velocity servo.</strong> Throttle is a <em>speed request</em>: FA drives |v| toward <code>throttle &times; v_max</code> using main and retro thrust. This is why boost decays fast with FA on &mdash; the ship actively retro-thrusts back to the setpoint.</li>
+<li><strong>Drift nulling.</strong> Maneuvering thrusters drive the off-axis velocity components to zero, pinning the velocity vector to the nose vector.</li>
+<li><strong>Rotational damping.</strong> Release the stick and counter-torque drives &omega; to zero.</li>
+</ol>
+<p>FA-off removes all three. <strong>The caps remain</strong> &mdash; the flight computer still prevents unsafe speeds and spin. The rate uplift from FA-off is widely overstated: &omega;<sub>max</sub> is fixed and FA-off does not raise it. What FA-off does is <em>bypass the speed-dependent rate penalty</em> and free the thruster budget from drift-cancelling duty. So:</p>
+<div class="tw"><table>
+<caption>FA-off pitch-rate uplift vs FA-on, derived from measured 360&deg; times</caption>
+<thead><tr><th>Condition</th><th class="n">Uplift</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>At blue-zone centre (~50% throttle)</td><td class="n">~0%</td><td>You are already at peak &omega;; nothing to recover</td></tr>
+<tr><td>At zero throttle</td><td class="n">+24% to +151%</td><td>Median &asymp;&nbsp;+128%</td></tr>
+<tr><td>At full throttle</td><td class="n">+29% to +223%</td><td>Median &asymp;&nbsp;+137%</td></tr>
+</tbody></table></div>
+<p>This resolves a decade-old community argument: players testing at blue-zone speed correctly report no difference; players flipping at boost speed correctly report an enormous one. Treat &ldquo;FA-off = peak &omega; always&rdquo; as strong community consensus rather than published spec &mdash; there is one dissenting measurement on record.</p>
+<p><strong>Rotational Correction</strong> is a <em>separate</em> sub-mode, not the same as rotational damping: it exists to match a rotating starport&rsquo;s spin. Disable FA while it is on and the ship keeps spinning with the station. FA decomposes into five independently disableable parts: Auto Dock, Auto Launch, Auto Land, Rotational Correction, Hyperspace Dethrottle.</p>
+
+<h3>3.3 The blue zone</h3>
+<p>A smooth speed-dependent multiplier on angular rate, peaking at <strong>exactly 50% of current max speed</strong>. Frontier designer Mike Evans, on record: <em>&ldquo;The exact centre is where you get the best turn rates. Any deviation away from that will result in less than optimal turn rates.&rdquo;</em> Two properties a mod must get right:</p>
+<ul>
+<li>It is a <strong>curve, not a step</strong>, and its steepness is per-hull &mdash; an FAS stays agile at the band edge, a Fer-de-Lance falls off hard.</li>
+<li>Because <code>v_max</code> scales with ENG pips, <strong>the blue zone slides along the throttle tape with pip allocation</strong>. It is 50% of the pip-adjusted max, not 50% of the tape.</li>
+<li>The tape reads <em>speed magnitude regardless of direction</em> &mdash; drifting sideways at 50% of max also gives peak turn rates. This is precisely what makes reverski work.</li>
+</ul>
+<div class="tw"><table>
+<caption>Measured 360&deg; pitch times by throttle position (4 pips ENG)</caption>
+<thead><tr><th>Ship</th><th class="n">@0%</th><th class="n">@50%</th><th class="n">@100%</th><th class="n">&omega;peak &deg;/s</th><th class="n">Gain vs 0%</th></tr></thead>
+<tbody>
+<tr><td class="ship">Eagle</td><td class="n">16.07 s</td><td class="n">7.42 s</td><td class="n">19.72 s</td><td class="n">48.5</td><td class="n">&times;2.17</td></tr>
+<tr><td class="ship">Fer-de-Lance</td><td class="n">23.70 s</td><td class="n">9.70 s</td><td class="n">21.40 s</td><td class="n">37.1</td><td class="n">&times;2.44</td></tr>
+<tr><td class="ship">Viper Mk III</td><td class="n">25.77 s</td><td class="n">10.42 s</td><td class="n">24.80 s</td><td class="n">34.5</td><td class="n">&times;2.47</td></tr>
+<tr><td class="ship">Python</td><td class="n">31.10 s</td><td class="n">12.40 s</td><td class="n">39.40 s</td><td class="n">29.0</td><td class="n">&times;2.51</td></tr>
+<tr><td class="ship">Anaconda</td><td class="n">18.03 s</td><td class="n">14.49 s</td><td class="n">18.75 s</td><td class="n">24.8</td><td class="n">&times;1.24</td></tr>
+<tr><td class="ship">Federal Corvette</td><td class="n">16.10 s</td><td class="n">12.80 s</td><td class="n">18.67 s</td><td class="n">28.1</td><td class="n">&times;1.26</td></tr>
+<tr><td class="ship">Imperial Cutter</td><td class="n">25.10 s</td><td class="n">20.12 s</td><td class="n">30.40 s</td><td class="n">17.9</td><td class="n">&times;1.25</td></tr>
+</tbody></table></div>
+<p>Across 26 hulls the gain runs &times;1.24&ndash;&times;2.51 vs zero throttle (median &times;2.28) and up to &times;3.23 vs full throttle. <strong>Roll is far less speed-sensitive</strong> (penalty only &times;1.09&ndash;&times;1.71), which is itself a design signal. The data splits suspiciously cleanly into a ~1.25 cluster (the big hulls) and a ~2.47 cluster (everything else) &mdash; possibly two curve profiles, possibly a testing artefact.</p>
+
+<h3>3.4 Yaw, deliberately crippled</h3>
+<p>Fleet-wide <strong>yaw &divide; pitch: median 0.40</strong>; <strong>yaw &divide; roll: ~0.16</strong>. Worst offenders sit at 0.25 (Cobra Mk III) and the Cutter/Corvette/Type-9 yaw at <strong>8&nbsp;&deg;/s</strong> &mdash; a 45-second standing 360. The intent is stated outright in Frontier&rsquo;s own FAQ: without it you get <em>&ldquo;endless turreting and circle-strafing&hellip; due to the lack of terrain features in mid space&rdquo;</em>, so they limit yaw and enforce an optimum corner speed, <em>&ldquo;forcing [you] to roll and then pitch to get the most efficient turn rate.&rdquo;</em> Compare SC&rsquo;s 0.76&ndash;0.91. Note that post-2024 Elite hulls walk this back hard &mdash; Mandalay 0.80, Cobra Mk V 0.73.</p>
+
+<h3>3.5 Boost and pips</h3>
+<ul>
+<li>Multiplier is <strong>per-hull, 1.22&ndash;1.70&times; (median 1.38)</strong>, inversely correlated with base speed &mdash; fast ships get small multipliers.</li>
+<li>Cost is a <strong>fixed MJ draw from the ENG capacitor</strong>, 7&ndash;27 MJ by hull, not a percentage. If the fitted distributor&rsquo;s capacity is below the boost cost you <em>cannot boost at all</em>, even at full charge.</li>
+<li>Cooldown is <strong>emergent, not a timer</strong>: <code>t = boostEnergy &divide; (engrate &times; pips/4)</code> &mdash; roughly 4.8&ndash;11.7 s at 4 pips, doubling at 2 pips, never at 0 pips.</li>
+<li>Boost grants <strong>peak turn rate for its whole duration</strong>, which is why the boost-flip works despite putting you far above blue-zone speed.</li>
+<li><code>v_max</code> is linear in ENG pips but the slope is a hidden per-hull constant: a Vulture keeps 90.5% of top speed at zero pips, a Type-9 keeps 30.8%.</li>
+</ul>
+
+<h3>3.6 FA-off drift combat</h3>
+<p>The canonical maneuver is the <strong>boost-flip</strong>: <code>boost &rarr; full pitch &rarr; FA-off &rarr; hold until the nose crosses &rarr; FA-on</code>. Boost pushes |v| far above cap where FA-on would crush pitch rate by &times;2.2&ndash;3.2; FA-off removes that coupling so you rotate at peak &omega; while the velocity vector keeps its heading. <strong>Reverski</strong> exploits the tape reading magnitude: reverse at 60% of the reverse cap and you are still in the blue zone. <strong>Drift turning</strong> works because FA-on spends thruster budget fighting the drift its own turn creates &mdash; FA-off gives that budget back to rotation and lets the lateral impulse translate you into the turn.</p>
+<div class="note"><p class="nt">The important divergence</p>
+<p>Elite&rsquo;s FA-off is a <strong>momentary tactical mode</strong> used for the rotation phase of a maneuver and then dropped &mdash; experienced players are openly split on whether it is even a net gain in PvE. Star Citizen&rsquo;s decoupled is likewise recommended as a <em>brief</em> orientation change, for a different reason: sitting on a constant vector gets you killed. Neither game rewards flying permanently decoupled. A mod that only implements &ldquo;a decouple toggle&rdquo; and stops has implemented the least-used 5% of either flight model.</p></div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+<div class="sechead"><span class="secnum">04</span><h2>What actually creates the weight</h2></div>
+<p class="lede">Against the baseline of a ship that always flies where its nose points, seven concrete properties do essentially all the work. They are listed in descending order of contribution to the characteristic feel.</p>
+
+<h3>1. Orientation and velocity are separate state</h3>
+<p>The arcade model stores a <em>speed scalar</em> and applies it along the forward vector; turning the nose instantly redirects the entire velocity. The simulation model stores a <strong>velocity vector in world space</strong> that only changes when force is applied. Every other property on this list is downstream of that one representation change. It is also the single hardest thing to retrofit, because it changes the shape of the state, not just its values.</p>
+
+<h3>2. Momentum conservation with finite, asymmetric thrust</h3>
+<p>Weight comes from the <em>ratio</em> of available thrust to mass, not from thrust being low. Concretely: 0&nbsp;&rarr;&nbsp;SCM takes <strong>1.4&ndash;2.5 s on a light fighter and 3&ndash;5.4 s on a capital</strong>. Braking is separately and deliberately weaker &mdash; retro at 20&ndash;35% of main means <strong>stopping takes three to five times longer than starting</strong>. That asymmetry is felt constantly and is cheap to implement.</p>
+
+<h3>3. Angular inertia with a jerk-limited rate profile</h3>
+<p>Rotation is a commanded <em>rate</em>, but the transition between rates is bounded in the third derivative. No snap, no oscillation, a real settling time. Combined with a moment of inertia that differs per axis, this produces the characteristic roll &gg; pitch &gt; yaw hierarchy without any special-casing &mdash; and produces it <em>differently for every hull</em> as a consequence of geometry.</p>
+
+<h3>4. Thruster asymmetry as a geometric fact</h3>
+<p>Because thrust is applied at mount points, per-axis capability is not a tuning table &mdash; it emerges. Forward &gt; vertical &gt; lateral &gt; reverse is the shape both games converge on. Elite states it as universal constants (80% lateral, 60% reverse); SC lets it fall out of thruster placement. Either is fine; having <em>no</em> asymmetry is what reads as arcade.</p>
+
+<h3>5. The slide threshold</h3>
+<p>The most underrated property. An assist that perfectly cancels drift feels like an arcade game; an assist that <em>tries and fails past a threshold</em> feels like a spacecraft. In SC, translational stability holds a perfect zero-slide circle until <code>velocity &times; turn rate</code> exceeds available lateral thrust &mdash; then the ship starts sliding, progressively, and the pilot feels the airframe reach its limit. Elite reaches the same place from the other direction with the blue-zone rate penalty. <strong>Reproduce the threshold, not just the assist.</strong></p>
+
+<h3>6. Speed&ndash;agility coupling</h3>
+<p>Both games make going fast cost you turning. Elite does it explicitly via the blue-zone curve (&times;1.2&ndash;&times;3.2 penalty at the extremes). SC does it implicitly &mdash; comstab actively slows you to a speed you can corner at, and the SCM cap is <em>derived</em> from braking ability on the strongest turning axis. This is what makes throttle management a skill rather than a binary.</p>
+
+<h3>7. Deliberate imperfection</h3>
+<p>Low-magnitude thruster error on all flight; a settling PID rather than an exact solve; turbulence in atmosphere; unbalanced thrusters causing small attitude drift under linear thrust. These read as <em>machinery</em>. Perfect control reads as a spreadsheet.</p>
+
+<div class="note"><p class="nt">The negative result worth internalising</p>
+<p>Chris Roberts on why decoupled &ldquo;turreting&rdquo; is not the overpowered strategy it appears: <em>&ldquo;Sitting still or moving in a constant vector &mdash; which is what happens when you decouple &mdash; will get you killed.&rdquo;</em> The weight does not come from letting the player drift; it comes from making every change of vector <strong>cost time and commitment</strong>. If your mod makes drifting free and precise, you will have built something that feels less weighty than the arcade model, not more.</p></div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+<div class="sechead"><span class="secnum">05</span><h2>Feature checklist</h2></div>
+<p class="lede">Ordered by contribution to the characteristic feel, not by implementation order. Progress is stored in this browser; <strong>Save to page</strong> writes it into the artifact itself so it survives across devices.</p>
+
+<div class="ckbar">
+  <div class="prog"><div class="bar"><i id="pbar"></i></div><span class="pnum" id="pnum">0 / 31</span></div>
+  <button class="btn" id="clr" type="button">Reset</button>
+  <button class="btn pri" id="save" type="button">Save to page</button>
+</div>
+<p style="font-size:12.5px;color:var(--faint);margin:0 0 4px" id="saveNote"></p>
+
+<div class="tier">
+  <div class="tierhead"><span class="pill p1">Core</span><span class="tn">11 items &mdash; without these it is not the same flight model</span></div>
+  <p class="tierdesc">Each of these is individually load-bearing. Ship none of them partially.</p>
+  <ul class="items" data-tier="core">
+    <li><label class="item"><input type="checkbox" data-k="c1"><span><span class="ttl">World-space velocity vector as first-class state</span><span class="why">Replace &ldquo;speed scalar along forward&rdquo; with a 3-vector integrated from summed force. <b>Everything else depends on this.</b> If the engine only exposes a speed value, this is the item that decides whether the project is a data mod or a code mod.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c2"><span><span class="ttl">Force-based integration with mass</span><span class="why">Thrust in newtons, <code>a = F/m</code>, integrate. Not a lerp toward a target speed. Gives momentum conservation for free.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c3"><span><span class="ttl">Six independent translation axes</span><span class="why">Forward, back, left, right, up, down as separate thrust channels the player binds separately. <b>Strafe is the feature</b> &mdash; a 6DOF model without bound lateral and vertical thrust is just a slow arcade ship.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c4"><span><span class="ttl">Per-axis thrust asymmetry</span><span class="why">Target <code>forward 1.0 / vertical 0.6&ndash;0.8 / lateral 0.5&ndash;0.7 / reverse 0.2&ndash;0.35</code>. SC data shows retro at 20&ndash;35% of main; Elite hard-caps lateral at 80% and reverse at 60% of forward speed.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c5"><span><span class="ttl">Coupled mode as a velocity servo</span><span class="why">Default mode: throttle sets a <em>target speed along the nose</em>, and a controller applies thrust to reach and hold it, cancelling off-axis velocity. This is the mode 95% of flying happens in &mdash; get it right before touching decoupled.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c6"><span><span class="ttl">Decoupled mode: strafe becomes acceleration, throttle disabled</span><span class="why">The exact IFCS definition &mdash; linear axes switch from velocity command to <b>acceleration command</b>, throttle is disabled, drift-nulling stops. Rotation control stays identical. Bind to a tap toggle plus explicit on/off.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c7"><span><span class="ttl">Drift-nulling assist with a finite thrust budget</span><span class="why">In coupled mode, spend lateral/vertical thrust cancelling the velocity the turn generates &mdash; but only what the thrusters actually have. <b>The threshold where it fails is the feel.</b></span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c8"><span><span class="ttl">Rotation as a rate command with angular inertia</span><span class="why">Input maps to a goal angular velocity, not a goal attitude and not a torque. Approach it through a bounded acceleration profile so there is a real spin-up and spin-down.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c9"><span><span class="ttl">Jerk limit on the rate profile</span><span class="why">Bound the rate of change of angular acceleration. This is the difference between &ldquo;responsive&rdquo; and &ldquo;twitchy&rdquo;, and CIG call it out explicitly as the anti-stiffness mechanism. Transient (exponential) profile for fighters, 3rd-order for heavies.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c10"><span><span class="ttl">Per-axis rotation rate hierarchy</span><span class="why">Roll 2.5&ndash;3&times; pitch, yaw 0.75&ndash;0.9&times; pitch on fighters; all three converge toward parity on capitals. Drive it from per-axis moment of inertia if possible, tune it directly if not.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="c11"><span><span class="ttl">Asymmetric accel vs brake timing</span><span class="why">0&nbsp;&rarr;&nbsp;top speed in 1.4&ndash;2.5 s for a fighter; stopping takes 3&ndash;5&times; longer. Cheap to implement, felt on every single input.</span></span></label></li>
+  </ul>
+</div>
+
+<div class="tier">
+  <div class="tierhead"><span class="pill p2">Important</span><span class="tn">12 items &mdash; the difference between &ldquo;Newtonian&rdquo; and &ldquo;Star Citizen&rdquo;</span></div>
+  <p class="tierdesc">With Core alone you have a competent 6DOF sim. These are what make it read specifically as IFCS.</p>
+  <ul class="items" data-tier="imp">
+    <li><label class="item"><input type="checkbox" data-k="i1"><span><span class="ttl">Speed limiter, separate from throttle</span><span class="why">An independently adjustable ceiling that the controller enforces with corrective deceleration whenever exceeded, for any reason. Bind to <span class="kbd">Alt</span>+wheel as discrete steps. In SC it is the one assist the pilot may never disable.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i2"><span><span class="ttl">Two master modes (combat / travel)</span><span class="why">Low-speed high-agility mode with weapons live, versus ~5&times; speed with weapons and shields offline. Long-press to swap with a spool delay. This single split is what killed jousting in SC.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i3"><span><span class="ttl">Boost that raises thrust on <em>all</em> axes</span><span class="why">Not a forward-speed button. It should buy harder braking, tighter turns and faster spin recovery too. <b>Include the &times;1.2 rotation-rate multiplier</b> &mdash; boost is an agility button.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i4"><span><span class="ttl">Boost capacitor with size-scaled ramp</span><span class="why">20 units, 1/s drain, 0.75/s regen &rarr; 20 s of boost, ~27 s refill. <b>Ramp-up 0.4 s on a light fighter to 2.0 s on a heavy</b> &mdash; the ramp is where hull weight is communicated.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i5"><span><span class="ttl">Speed&ndash;agility coupling</span><span class="why">Either the Elite way (rate multiplier curve peaking at 50% of max, &times;1.2&ndash;&times;3.2 penalty at the extremes) or the SC way (comstab actively limits speed to what you can corner at). Pick one; do not skip both.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i6"><span><span class="ttl">Relative vs VJoy mouse mode</span><span class="why">Ship both and let the player choose. Relative = per-frame delta is the rate command, self-centring, FPS-like. VJoy = deltas integrate into a persistent virtual stick that does <b>not</b> self-centre. One integrator apart; entirely different feel.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i7"><span><span class="ttl">Full binding surface</span><span class="why">Strafe &times;6, roll, throttle up/down, speed limiter &plusmn;, boost, decouple toggle, master mode, space brake, gear, plus explicit on/off actions beside every toggle. SC&rsquo;s 4.x decomposition &mdash; toggle/on/off triples per subsystem &mdash; is the right template.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i8"><span><span class="ttl">Space brake</span><span class="why">A dedicated &ldquo;kill all velocity&rdquo; input (<span class="kbd">X</span>) that fires every thruster retrograde. Essential given how weak retro thrust is, and it is what makes weak retro thrust <em>tolerable</em> rather than infuriating.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i9"><span><span class="ttl">Sticky / cruise throttle plus trim</span><span class="why">A persistent velocity setpoint that holds where you leave it, distinct from spring-return throttle; trim shifts the spring&rsquo;s neutral point so a centring device can hold 75% hands-off.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i10"><span><span class="ttl">G-force safety limiter</span><span class="why">Clamp commanded acceleration below a threshold, with a visible G meter. ~7&nbsp;g for 4.5&nbsp;s to blackout, &minus;2 to &minus;3&nbsp;g for 3&ndash;5&nbsp;s to redout. Disengage it automatically while boosting, as SC does.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i11"><span><span class="ttl">Landing / precision mode</span><span class="why">Gear down clamps speed to 20&ndash;30 m/s and reduces rotation rates. Prevents the 6DOF model from making docking miserable &mdash; which is exactly why both games have it.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="i12"><span><span class="ttl">Velocity-vector HUD</span><span class="why">Prograde/retrograde markers, drift indicator, speed tape with the limiter and the optimal-turn band marked. <b>A 6DOF model is unflyable without instrumentation that shows where you are actually going</b> &mdash; this is a flight-model feature, not a UI nicety.</span></span></label></li>
+  </ul>
+</div>
+
+<div class="tier">
+  <div class="tierhead"><span class="pill p3">Polish</span><span class="tn">8 items &mdash; fidelity, once the feel is right</span></div>
+  <p class="tierdesc">Real depth, but none of it rescues a model that missed the Core tier.</p>
+  <ul class="items" data-tier="pol">
+    <li><label class="item"><input type="checkbox" data-k="p1"><span><span class="ttl">True per-thruster force/torque solve</span><span class="why">Model thrusters as point forces at mount points and solve for output levels. Gives asymmetry, damage response and parasitic torque for free &mdash; but it is a large build, and a tuned per-axis approximation gets ~85% of the feel.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="p2"><span><span class="ttl">Anti-tumble / non-principal-axis torque</span><span class="why">Sustained rotation about a local axis that is not a principal axis of inertia generates torque about the others. Model it, then have the controller spend counter-torque fighting it &mdash; and let max stable rate <em>fall</em> as thrust is lost.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="p3"><span><span class="ttl">Thruster error overlay</span><span class="why">Low-magnitude continuous noise on all flight, scaling with damage and heat. Subtle nose play when firing at capacity or settling at zero velocity. This is what makes it read as machinery rather than mathematics.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="p4"><span><span class="ttl">Aim assist on the ESP model</span><span class="why">Blend player input toward a tracking solution <em>gated by correlation</em> &mdash; full correlation at 0&deg;, zero at ~2.4&deg;, blending to <b>match</b> rates rather than <b>close</b> rates inside the window so the player can still refine the shot. Far better than sensitivity dampening.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="p5"><span><span class="ttl">Mass and loadout affect performance</span><span class="why">Cargo and equipment change mass and moment of inertia, so speed and agility degrade as a physical consequence rather than a stat penalty.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="p6"><span><span class="ttl">Atmospheric drag with per-axis coefficients</span><span class="why">Velocity-squared drag, per-axis coefficient and cross-sectional area, terminal velocity below the artificial cap. Feed drag <em>forward</em> into the controller so the asymmetry appears: more responsive slowing down than speeding up.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="p7"><span><span class="ttl">Centre of pressure torque and turbulence</span><span class="why">Drag applied at the area centroid produces torque when offset from the COM along the velocity vector. Plus low-magnitude turbulence scaled by density and airspeed.</span></span></label></li>
+    <li><label class="item"><input type="checkbox" data-k="p8"><span><span class="ttl">Damage-driven degradation</span><span class="why">Lost thrusters shift the COM, unbalance the array and reduce max stable rotation rate per axis. A gyro fallback preserves minimal attitude control. The payoff is that a damaged ship flies <em>wrong</em>, not just slower.</span></span></label></li>
+  </ul>
+</div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+<div class="sechead"><span class="secnum">06</span><h2>Target-engine reality check</h2></div>
+<p class="lede">This project sits in a No Man&rsquo;s Sky mod directory, so one thing is worth stating before the checklist gets costed: <strong>the Core tier is not reachable by editing <code>GCSPACESHIPGLOBALS.GLOBAL.MBIN</code>.</strong> Here is exactly why, from the shipped struct definitions.</p>
+
+<p>NMS tunes flight through <code>GcPlayerSpaceshipControlData</code>, which holds four <code>GcPlayerSpaceshipEngineData</code> profiles &mdash; <code>SpaceEngine</code>, <code>PlanetEngine</code>, <code>CombatEngine</code>, <code>AtmosCombatEngine</code> &mdash; per ship class (<code>Control</code>, <code>ControlLight</code>, <code>ControlHeavy</code>, <code>ControlHover</code>, <code>ControlHeavyHover</code>, <code>ControlCorvette</code>). The engine struct&rsquo;s complete field set:</p>
+<div class="tw"><table>
+<caption>GcPlayerSpaceshipEngineData &mdash; every flight field</caption>
+<thead><tr><th>Group</th><th>Fields</th><th>What it tells you</th></tr></thead>
+<tbody>
+<tr><td>Linear</td><td class="m">MaxSpeed, MinSpeed, ThrustForce, MinSpeedForce, Falloff, OverspeedBrake, ReverseBrake</td><td><strong><code>MinSpeed</code> exists</strong> &mdash; the model has a floor speed, not a zero. Thrust is a scalar along one axis.</td></tr>
+<tr><td>Nose-follow</td><td class="m">DirectionBrake, DirectionBrakeMin</td><td><strong>This is the &ldquo;flies where the nose points&rdquo; mechanism</strong> &mdash; velocity is braked toward the facing vector. It is a tunable, so drift can be increased, but it cannot be replaced with a velocity servo.</td></tr>
+<tr><td>Turning</td><td class="m">TurnStrength, TurnBrakeMin, TurnBrakeMax, LowSpeedTurnDamper</td><td>A speed&ndash;agility coupling already exists in spirit (turning brakes you).</td></tr>
+<tr><td>Auto-bank</td><td class="m">RollAmount, RollForce, RollAutoTime</td><td>Plus <code>RudderToRoll*</code> in globals &mdash; yaw induces roll automatically.</td></tr>
+<tr><td>Boost</td><td class="m">BoostMaxSpeed, BoostThrustForce, BoostFalloff, BoostingTurnDamp</td><td>Boost already damps turning. No capacitor, no ramp, no rotation multiplier.</td></tr>
+<tr><td>Follow PID</td><td class="m">FollowProportionalGain, FollowIntegralGain, FollowDerivativeGain, &hellip;Limit, IntegralDecay</td><td>A real PID exists &mdash; but for follow/autopilot, not pilot control.</td></tr>
+</tbody></table></div>
+<p>Globals adds <code>LinearDamping</code>, <code>AngularDamping</code>, <code>DriftSpring</code>, <code>DriftTurnStrengthMultiplier</code>, <code>DriftTurnBrakeMultiplier</code>, <code>LateralDriftRange</code>, <code>ThrustDecaySpring</code>, <code>KBThrustSmoothTime</code>, <code>MaxOverspeedBrake</code>, <code>ShipThrustReverseThreshhold</code>, plus <code>StickyTurn*</code> and <code>AimSpeedTrack*</code> (an existing aim-assist analogue).</p>
+
+<h4>What is missing, and it is the whole game</h4>
+<ul>
+<li><strong>No lateral or vertical thrust axis exists anywhere in the struct.</strong> No strafe fields, no per-axis thrust, no 6DOF. Core items 3, 4, 6 and 7 have nothing to bind to.</li>
+<li><strong>No decouple concept.</strong> <code>DirectionBrake</code> can be lowered toward zero but the model still has a single thrust axis, so &ldquo;decoupled&rdquo; would mean drifting with no ability to translate.</li>
+<li><strong>No mass, no moment of inertia, no torque</strong> &mdash; <code>MaxTorque</code> and <code>AngularFactor</code> are single scalars in control data, not a tensor.</li>
+<li><code>MinSpeed</code> means the ship cannot come to rest.</li>
+</ul>
+
+<div class="note"><p class="nt">The honest costing</p>
+<p><strong>Data-only mod (MBIN edits) reaches, at best, a partial Important tier:</strong> heavier accel/brake asymmetry via <code>ThrustForce</code> / <code>ReverseBrake</code> / <code>OverspeedBrake</code>; substantially more drift by cutting <code>DirectionBrake</code> and <code>LinearDamping</code> and raising <code>DriftSpring</code>; weightier rotation via <code>AngularDamping</code>, <code>TurnStrength</code> and <code>KBThrustSmoothTime</code>; a boost that costs agility via <code>BoostingTurnDamp</code>; and a genuine two-master-mode split by re-tuning <code>CombatEngine</code> vs <code>SpaceEngine</code> as SCM vs NAV, which is the one place NMS&rsquo;s existing structure lines up neatly with SC&rsquo;s. That is a real, worthwhile mod &mdash; it just is not &ldquo;IFCS with no compromises.&rdquo;</p>
+<p style="margin-top:12px"><strong>&ldquo;No compromises&rdquo; requires a native code mod</strong> that intercepts the ship physics update and substitutes its own integrator, plus new input bindings for six translation axes. Decide which of these two projects you are doing <em>before</em> costing the checklist, because the answer changes which tier is even addressable.</p></div>
+</section>
+
+<footer>
+<div class="wrap" style="padding:0">
+<h4>Primary sources</h4>
+<ul>
+<li><a href="https://drive.google.com/file/d/1poxfPYfm32r84G4WWWJ6uK-rU6ijl85g/view">Pritchett, J. &mdash; <em>IFCS and Flight Physics, Star Citizen 3.2</em></a> (CIG Senior Physics Programmer; 21 pp.) &mdash; the authoritative description of the control pipeline, control modes, subsystems, ESP algorithm, atmospheric model and ship tuning process.</li>
+<li><a href="https://robertsspaceindustries.com/en/comm-link/engineering/13951-Flight-Model-And-Input-Controls">RSI Comm-Link &mdash; Flight Model and Input Controls</a> &middot; <a href="https://robertsspaceindustries.com/en/comm-link/engineering/15031-Design-Notes-Flight-Model-Changes-In-Star-Citizen-Alpha-20">Design Notes: Flight Model Changes in Alpha 2.0</a> &middot; <a href="https://api.star-citizen.wiki/comm-links/20053">Master Modes Guide</a></li>
+<li><a href="https://starcitizen.tools/Intelligent_Flight_Control_System">SC Wiki &mdash; IFCS</a> &middot; <a href="https://starcitizen.tools/Thruster">Thruster</a> &middot; <a href="https://starcitizen.tools/ESP">ESP</a> &middot; <a href="https://starcitizen.tools/Master_Modes">Master Modes</a> &middot; <a href="https://starcitizen.tools/Game_Options">Game Options</a></li>
+<li>Ship telemetry: <a href="https://api.star-citizen.wiki/">Star Citizen Wiki API v3</a> (speed, agility, thruster capacity, afterburner capacitor) and the <a href="https://robertsspaceindustries.com/ship-matrix">RSI Ship Matrix</a>.</li>
+<li>Bindings: shipped <code>defaultProfile.xml</code> for <a href="https://github.com/philchuang/spacesimcontrolmanager/tree/master/samples/SC">4.8.1</a>, <a href="https://github.com/yucatan/VectorSigma/tree/master/SCbinds">3.23.1</a> and <a href="https://github.com/SCToolsfactory/SCJMapper-V2/blob/master/SC/defaultProfile.xml">2.x/3.x</a>.</li>
+<li>Elite Dangerous: <a href="https://forums.frontier.co.uk/threads/the-manuverabilty-blue-zone.262352/post-4049158">Mike Evans (Frontier) on the blue-zone centre</a> &middot; <a href="https://forums.frontier.co.uk/threads/thruster-speed-and-eng-pips-research-results.182057/">taleden, thruster/pip speed model</a> &middot; <a href="https://forums.frontier.co.uk/threads/pitch-roll-and-acceleration-for-nearly-everyship.182465/">Cliffson, measured pitch/roll by throttle</a> &middot; <a href="https://elite-dangerous.fandom.com/wiki/Flight_Model">Flight Model</a> / <a href="https://elite-dangerous.fandom.com/wiki/Flight_Assist">Flight Assist</a> / <a href="https://elite-dangerous.fandom.com/wiki/Thrusters">Thrusters</a> &middot; <a href="https://github.com/EDCD/coriolis-data">Coriolis ship data</a>.</li>
+<li>NMS struct definitions: <a href="https://github.com/monkeyman192/MBINCompiler">MBINCompiler</a> &mdash; <code>GcSpaceshipGlobals</code>, <code>GcPlayerSpaceshipControlData</code>, <code>GcPlayerSpaceshipEngineData</code>.</li>
+</ul>
+<p style="font-size:12.5px;color:var(--faint);max-width:70ch">Two caveats carried from the research: the Elite &ldquo;FA-off gives peak &omega; at any speed&rdquo; model is strong community consensus with one dissenting measurement, not published spec. And a few SC hulls carry obviously erroneous shipped retro values (Gladius 0.4&nbsp;g / 57&nbsp;s stopping time, Avenger Titan 0.09&nbsp;g / 305&nbsp;s), so treat individual outliers with suspicion while the class-level pattern holds.</p>
+</div>
+</footer>
+
+</main>
+</div>
+
+<script id="ck-state" type="application/json">{"checked":[]}</script>
+<script>
+(function(){
+  "use strict";
+  var KEY="fmspec.checklist.v1";
+  var boxes=Array.prototype.slice.call(document.querySelectorAll(".items input[type=checkbox]"));
+  var bar=document.getElementById("pbar"), num=document.getElementById("pnum");
+  var note=document.getElementById("saveNote"), saveBtn=document.getElementById("save");
+  document.getElementById("mCount").textContent=String(boxes.length);
+
+  function seeded(){
+    try{
+      var el=document.getElementById("ck-state");
+      var d=JSON.parse(el.textContent||"{}");
+      return Array.isArray(d.checked)?d.checked:[];
+    }catch(e){return [];}
+  }
+  function stored(){
+    try{ var r=localStorage.getItem(KEY); return r?JSON.parse(r):null; }catch(e){ return null; }
+  }
+  function persist(list){
+    try{ localStorage.setItem(KEY,JSON.stringify(list)); }catch(e){}
+  }
+  function current(){
+    return boxes.filter(function(b){return b.checked;}).map(function(b){return b.getAttribute("data-k");});
+  }
+  function paint(){
+    var done=0;
+    boxes.forEach(function(b){
+      var li=b.closest("li");
+      if(li) li.classList.toggle("done",b.checked);
+      if(b.checked) done++;
+    });
+    var pct=boxes.length?Math.round(done/boxes.length*100):0;
+    bar.style.width=pct+"%";
+    num.textContent=done+" / "+boxes.length;
+  }
+  function apply(list){
+    var set={}; list.forEach(function(k){set[k]=1;});
+    boxes.forEach(function(b){ b.checked=!!set[b.getAttribute("data-k")]; });
+    paint();
+  }
+
+  var s=stored();
+  apply(s===null?seeded():s);
+
+  boxes.forEach(function(b){
+    b.addEventListener("change",function(){ paint(); persist(current()); });
+  });
+
+  document.getElementById("clr").addEventListener("click",function(){
+    apply([]); persist([]);
+  });
+
+  // Optional: write progress into the artifact itself so it survives the browser.
+  var artifact=null, pristine=null;
+  try{ pristine="<!doctype html>\n"+document.documentElement.outerHTML; }catch(e){ pristine=null; }
+  saveBtn.disabled=true;
+  saveBtn.textContent="Save to page";
+  if(window.claude&&typeof window.claude.use==="function"&&pristine){
+    window.claude.use("artifact").then(function(a){
+      if(!a||typeof a.publish!=="function"){ saveBtn.remove(); return; }
+      artifact=a; saveBtn.disabled=false;
+    }).catch(function(){ saveBtn.remove(); });
+  } else {
+    saveBtn.remove();
+  }
+
+  saveBtn.addEventListener("click",function(){
+    if(!artifact||!pristine) return;
+    saveBtn.disabled=true; saveBtn.textContent="Saving…"; note.textContent="";
+    var json=JSON.stringify({checked:current()});
+    var next=pristine.replace(
+      /(<script id="ck-state" type="application\/json">)[\s\S]*?(<\/script>)/,
+      function(m,a,b){ return a+json+b; }
+    );
+    Promise.resolve(artifact.publish(next)).then(function(){
+      note.textContent="Saved. Every open view reloads to this version.";
+    }).catch(function(err){
+      saveBtn.disabled=false; saveBtn.textContent="Save to page";
+      var code=err&&err.code?err.code:"";
+      note.textContent = (code==="conflict")
+        ? "A newer version exists — reload and try again."
+        : "Couldn’t save to the page. Progress is still stored in this browser.";
+    });
+  });
+
+  // TOC scrollspy
+  var links=Array.prototype.slice.call(document.querySelectorAll("nav.toc a"));
+  var secs=links.map(function(a){ return document.querySelector(a.getAttribute("href")); });
+  if("IntersectionObserver" in window && secs.every(Boolean)){
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){
+        if(!en.isIntersecting) return;
+        var i=secs.indexOf(en.target);
+        links.forEach(function(l,j){ l.classList.toggle("on",j===i); });
+      });
+    },{rootMargin:"-12% 0px -72% 0px"});
+    secs.forEach(function(s){ io.observe(s); });
+  }
+})();
+</script>
