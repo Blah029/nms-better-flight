@@ -50,8 +50,11 @@ SPACE = {
 }
 
 ATMOS = {
-    "MinSpeed":          ("mul", 0.25),
-    "MinSpeedForce":     ("mul", 0.25),
+    # Same as space: no minimum speed, so you can stop, hover and reverse in
+    # atmosphere. (1.0.x kept a quarter of vanilla here - 5 m/s with a force
+    # pushing back up to it - which made the ship creep and never reverse.)
+    "MinSpeed":          0.0,
+    "MinSpeedForce":     0.0,
     "DirectionBrake":    ("mul", 0.35),
     "DirectionBrakeMin": ("mul", 0.35),
     "RollAutoTime":      1000.0,

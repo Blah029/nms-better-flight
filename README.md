@@ -36,9 +36,19 @@ option is required**. If you prefer a launch option instead:
 | **Space** | **thrust up** | | **N** | land |
 | **LCtrl** | **thrust down** | | **F** | exit ship / tag / follow |
 | **Q / E** | roll left / right | | **C** | scan |
-| mouse | pitch / yaw (no forced roll) | | **F8** | strafe on/off |
+| **Z** | **coupled / decoupled** | | **F8** | all native features on/off |
+| mouse | pitch / yaw (no auto-bank) | | | |
 
 Bold = new. Everything else on the ship keyboard map is unchanged.
+
+**Coupled** (default at launch): every axis you aren't commanding is braked toward
+zero as one vector, so releasing the throttle stops the ship along its direction of
+travel. **Decoupled**: no braking — velocity is world-fixed through turns and flips.
+Above `MomentumMinSpeed` the game's own velocity changes on uncommanded axes are
+discarded; below it, and during pulse/landing/follow hand-offs, the game flies.
+
+Any action takes several inputs, mouse buttons included:
+`StrafeLeft = KeyA, Mouse4`, `Ship_RollLeft = KeyQ, Mouse4`.
 
 Pulse jump also still fires if both roll keys are held — that's hard-coded game
 behaviour, so it moved from A+D to **Q+E**.
@@ -59,22 +69,29 @@ with the game running.
 | `LateralAccel` | 70 | strafe thruster, m/s² |
 | `VerticalAccel` | 55 | up/down thruster, m/s² |
 | `MaxStrafeSpeed` | 140 | strafe won't push that axis past this |
+| `RetroAccel` / `MainAccel` | 60 / 120 | coupled braking of forward / backward motion, m/s² |
+| `ThrustKey` / `BrakeKey` / `BoostKey` | W / S / LShift | the game's throttle keys, as coupled mode sees them |
+| `AutopilotKeys` / `AutopilotSeconds` | N, B, F / 6 | keys that hand control to the game, and for how long |
+| `WorldMomentum` / `MomentumMinSpeed` | 1 / 30 | discard the game's velocity changes on uncommanded axes above this speed |
+| `DriftSpeedCap` | 3500 | safety cap on sideways + vertical speed |
+| `FlightRetune` | 1 | apply the flight retune on top of the loaded flight data (0 restores the loaded values) |
 | `InvertLateral` / `InvertVertical` | 0 | flip if a direction is backwards |
 | `Debug` | 1 | per-second flight telemetry in `BetterFlight.log` |
 
-The rest of the feel — momentum, stopping, roll coupling — is the data retune in
-`build_mod.py` (`SPACE` / `ATMOS` / `GLOBAL_TUNING`). That needs a re-install and a
-game restart.
+The rest of the feel — momentum, stopping, roll coupling — is the flight retune. Its
+tables live in `build_mod.py` (`SPACE` / `ATMOS` / `GLOBAL_TUNING`). `native/build.sh`
+generates `native/src/flight_tuning.inc` from them, and the DLL applies them in memory
+(RESEARCH.md §16). Changing a table needs a rebuild; `FlightRetune` works live.
 
 ---
 
 ## How it works
 
-Three pieces, all built from this repo:
+Built from this repo:
 
 | Piece | Type | Does |
 |---|---|---|
-| `BetterFlight` | data mod | Retunes 200 flight values: kills yaw→roll coupling, lets the ship stop, cuts the built-in flight assist so momentum exists |
+| flight retune | in `winmm.dll` | 176 flight values (no yaw→roll coupling, the ship can stop, flight assist cut so momentum exists), found by name via the game's reflection metadata and applied in memory on top of whatever the game loaded, so ship-globals mods such as PTSd still work |
 | `BetterFlightControls` | data mod | Moves vanilla roll / pulse / land / exit off the keys strafe needs |
 | `winmm.dll` | native mod | Adds strafe. Post-hooks `cGcSpaceshipComponent::UpdateControlled`; each frame reads ship velocity, adds thruster Δv along the ship's own right/up axes, writes it back |
 
@@ -103,7 +120,7 @@ them. So the DLL supplies the thrust itself.
 start looks like:
 
 ```
-BetterFlight 0.2.0 loaded into NMS.exe (...)
+BetterFlight 1.1.0 loaded into NMS.exe (...)
 resolved: UpdateControlled=+0x... GetVelocity=+0x... SetLinearVelocity=+0x... GetTransform=+0x...
 offsets:  ship->physics=0x6248  physics->rigidbody=0x60  rigidbody->state=0x290
 hook installed.
@@ -131,9 +148,9 @@ logged as `SKIP (...)` with the reason, every few seconds.
 ./package.py
 ```
 
-Rebuilds everything against the installed game, round-trip-checks the data mods,
-self-tests the DLL against the real `NMS.exe`, turns debug logging off in the
-shipped settings, and writes:
+Rebuilds everything against the installed game, round-trip-checks the controls data
+mod, runs the flight simulator, self-tests the DLL against the real `NMS.exe`, turns
+debug logging off in the shipped settings, and writes:
 
 - `dist/BetterFlight-<version>-steambuild<id>.zip` — extract-into-game-folder layout
 - `dist/nexus_description.bbcode` — paste into the Nexus description editor
@@ -154,7 +171,7 @@ package.py         build a Nexus release zip
 release/           player README, Nexus page text, Linux override helper
 update.sh          run after a game update
 controls.ini       key layout + live tuning (single source of truth)
-build_mod.py       data: flight retune
+build_mod.py       flight retune tables (compiled into the DLL; --diff lists them)
 controls_mod.py    data: vanilla key relocation
 setup_tools.py     picks the MBINCompiler that matches the installed game
 common.py          game discovery, build detection, round-trip verification

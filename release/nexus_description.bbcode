@@ -1,19 +1,31 @@
-[center][size=6][b]Better Flight[/b][/size]
-[size=4]6DOF flight controls for No Man's Sky[/size][/center]
+[center][size=6][b]BETTER FLIGHT[/b][/size]
+[size=5][b]THE FIRST TRUE 6DOF FLIGHT MOD FOR NO MAN'S SKY[/b][/size]
 
-Strafe sideways. Thrust up and down. Stop dead in space. Turn without the ship banking on its own.
+[size=4]Strafe. Thrust up and down. Keep your momentum through a 180 and fly backwards at full speed.[/size]
 
-No Man's Sky ships only ever fly where the nose points. Better Flight gives you control over all six directions of movement - forward/back, left/right, up/down, pitch, yaw and roll - using a small native module that adds real thruster movement on top of a retuned flight model.
+[b]Not just a speed tweak or a handling retune.[/b] Real thrust on three axes the game never had, with a Star Citizen-style coupled / decoupled switch.[/center]
+
+Every ship in No Man's Sky flies where its nose points. You can't slide sideways, you can't lift straight up, and you can never truly stop.
+
+Better Flight adds the three directions the game never had - left/right, up/down and forward/back as real thrust - and lets you keep the speed and heading you built up while you point the ship wherever you like. Boost to full speed, flip around, and keep going that way until you thrust against it.
 
 [size=5][b]Features[/b][/size]
 [list]
 [*][b]Strafe[/b] left and right, [b]thrust[/b] up and down
-[*]Mouse turning no longer rolls the ship
-[*]Ships can come to a complete stop
-[*]Momentum carries - the ship doesn't snap to where the nose points
-[*]Adjustable thruster strength, editable while playing
-[*]F8 toggles strafe on and off
+[*][b]Coupled / decoupled flight[/b] on [b]Z[/b]
+[*][b]Real momentum:[/b] the ship keeps flying the way you sent it instead of being pulled toward the nose
+[*]Bind actions to several keys, including [b]mouse buttons[/b]
+[*]Settings editable while playing
+[*]Works with ship speed and balance mods such as [b]Prepare To Sky[/b]
+[*][b]F8[/b] turns all mod features on and off
 [/list]
+
+[size=5][b]Coupled and decoupled[/b][/size]
+[b]Coupled[/b] (default every launch) - release the throttle and strafe keys and the ship brakes to a full stop in every direction. No sideways sliding when you turn.
+
+[b]Decoupled[/b] - nothing slows you down. Boost to top speed, let go, flip the ship around and keep flying backwards at full speed. Press [b]Z[/b] again and the ship brakes to a stop.
+
+Below about 30 m/s the game's normal flight takes over, so landing, take-off and hovering work as usual. Pulse jump, landing and auto-follow are left to the game automatically. Walking around a corvette or on a spacewalk, the mod leaves the ship alone.
 
 [size=5][b]Controls[/b][/size]
 [code]
@@ -22,42 +34,74 @@ A / D    STRAFE left / right       B       pulse jump   (was Space)
 Space    THRUST UP                 N       land         (was E)
 LCtrl    THRUST DOWN               F       exit / tag   (was E)
 Q / E    roll                      C       scan
-Mouse    pitch / yaw, no banking   F8      strafe on/off
+Z        COUPLED / DECOUPLED       F8      mod on/off
+Mouse    pitch / yaw
 [/code]
+Pulse jump also fires if you hold both roll keys - that's built into the game, so it's now Q + E.
+On a spacewalk, roll is [b]Shift + Q / Shift + E[/b] - the game's own control, not shown in its settings.
 
 [size=5][b]Installation[/b][/size]
 [b]Windows[/b]
 [list=1]
 [*]Close the game.
-[*]Extract the zip into your [i]No Man's Sky[/i] folder (the one containing [i]Binaries[/i] and [i]GAMEDATA[/i]) and merge folders.
+[*]Extract the zip into your [i]No Man's Sky[/i] folder (the one containing [i]Binaries[/i] and [i]GAMEDATA[/i]), merging folders and overwriting files.
 [*]Launch normally.
 [/list]
+[b]Updating from 1.1.1 or earlier:[/b] extract over the old version, then [b]delete GAMEDATA/MODS/BetterFlight[/b] - the flight retune is built into the DLL now.
 Manual install is recommended - part of the mod goes in [i]Binaries[/i], which mod managers don't always handle.
 
 [b]Linux / Steam Deck[/b]
-Install as above, then add this to the game's Steam launch options:
+Install as above, then add this to the game's Steam launch options (only needed once):
 [code]WINEDLLOVERRIDES="winmm=n,b" %command%[/code]
 or run the included [i]linux_wine_override.py[/i] once with the game closed. Use exactly [b]n,b[/b] - plain [b]n[/b] breaks it.
 
 [size=5][b]Please read[/b][/size]
 [list]
-[*][b]Custom keybinds:[/b] if you've changed keys in the game's Controls menu, those override this mod's layout. Reset to default or set roll/pulse/land/exit by hand. Strafe works either way.
-[*][b]Game updates:[/b] strafe usually survives updates, and switches itself off safely if it can't. The flight retune is tied to a game version and may need a mod update after a patch.
-[*][b]Conflicts:[/b] other mods that replace [i]GCSPACESHIPGLOBALS.GLOBAL.MBIN[/i] (most flight/speed mods), keyboard binding mods, and other mods installed as [i]winmm.dll[/i].
-[*][b]Keyboard only[/b] for now - controllers and HOTAS can't strafe yet.
-[*]Typing A, D or Space in text chat while flying also strafes.
+[*][b]Custom keybinds:[/b] keys you've changed in the game's Controls menu override this mod's layout. Reset to default or set roll/pulse/land/exit by hand. If you moved thrust, brake or boost off W / S / LShift, set [i]ThrustKey[/i], [i]BrakeKey[/i] and [i]BoostKey[/i] in the settings file to match.
+[*][b]Game updates:[/b] the mod usually survives updates, and switches the affected part off safely if it can't. The key layout file is tied to a game version - if the game crashes or keys act strangely after a patch, remove [i]GAMEDATA/MODS/BetterFlightControls[/i] until an update is posted.
+[*][b]Works with[/b] ship speed and balance mods such as Prepare To Sky - Better Flight's changes are applied on top of theirs.
+[*][b]Conflicts:[/b] keyboard binding mods, and other mods installed as [i]winmm.dll[/i].
+[*][b]Keyboard and mouse only[/b] for now - controllers and HOTAS can't strafe or switch modes yet.
+[*]No on-screen mode indicator yet.
+[*]Typing A, D, Space or Z in text chat while flying also strafes or switches mode.
 [/list]
 
+[size=5][b]Settings[/b][/size]
+Edit [i]Binaries/BetterFlight.ini[/i] - even with the game running; changes apply within about a second. Every setting is explained in the file. The main ones:
+[list]
+[*][b]StrafeLeft / StrafeRight / StrafeUp / StrafeDown[/b] - strafe keys
+[*][b]DecoupleKey[/b] (Z) - coupled / decoupled key
+[*][b]ToggleKey[/b] (F8) - all mod features on / off
+[*][b]LateralAccel / VerticalAccel[/b] (70 / 55) - strafe thruster strength
+[*][b]MaxStrafeSpeed[/b] (140) - strafe won't push past this speed
+[*][b]RetroAccel / MainAccel[/b] (60 / 120) - how hard coupled mode brakes forward / backward motion
+[*][b]ThrustKey / BrakeKey / BoostKey[/b] (W / S / LShift) - your throttle keys, used by coupled mode
+[*][b]AutopilotKeys[/b] (N, B, F) - keys that hand control to the game
+[*][b]WorldMomentum[/b] (1) - 0 = the game's own momentum handling
+[*][b]FlightRetune[/b] (1) - 0 = the game's own handling tuning (F8 also toggles it)
+[*][b]InvertLateral / InvertVertical[/b] (0) - flip a direction
+[/list]
+[b]Mouse buttons and multiple keys:[/b] separate inputs with commas, using Mouse1 to Mouse5:
+[code]StrafeUp    = Space, Mouse5
+DecoupleKey = KeyZ, Mouse4[/code]
+Roll, pulse jump, land and exit are changed in the in-game Controls menu, which also accepts mouse buttons.
+
 [size=5][b]Compatibility[/b][/size]
-Tested on Steam under Linux (Proton). Steam on Windows is expected to work - reports welcome. GOG untested. Xbox / Game Pass not supported.
+Steam on Windows and on Linux / Steam Deck (Proton). GOG untested. Xbox / Game Pass not supported.
 
 [b]Antivirus:[/b] some antivirus tools flag unknown DLLs that hook into games. [i]winmm.dll[/i] only loads inside No Man's Sky, and forwards calls to Windows' own winmm.dll.
 
 [size=5][b]Bug reports[/b][/size]
-Set [i]Debug = 1[/i] in [i]Binaries/BetterFlight.ini[/i], reproduce the problem, and attach [i]Binaries/BetterFlight.log[/i]. It records whether the module loaded and why strafe didn't apply.
+Set [i]Debug = 1[/i] in [i]Binaries/BetterFlight.ini[/i], reproduce the problem, and attach [i]Binaries/BetterFlight.log[/i].
+[list]
+[*][b]Nothing happens:[/b] press F8 in case the mod was switched off. On Linux, check the launch option.
+[*][b]Ship brakes while holding the throttle:[/b] set ThrustKey / BrakeKey / BoostKey to the keys you use.
+[*][b]A/D still roll:[/b] the BetterFlightControls folder didn't install, or custom keybinds are overriding it.
+[*][b]Log says the old data mod is still installed:[/b] delete GAMEDATA/MODS/BetterFlight.
+[/list]
 
 [size=5][b]Uninstall[/b][/size]
-Delete [i]Binaries/winmm.dll[/i], [i]Binaries/BetterFlight.ini[/i], [i]GAMEDATA/MODS/BetterFlight[/i] and [i]GAMEDATA/MODS/BetterFlightControls[/i]. On Linux, also remove the launch option.
+Delete [i]Binaries/winmm.dll[/i], [i]Binaries/BetterFlight.ini[/i] and [i]GAMEDATA/MODS/BetterFlightControls[/i]. On Linux, also remove the launch option.
 
 [size=5][b]Credits[/b][/size]
 [list]

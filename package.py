@@ -15,7 +15,7 @@ import hashlib, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
 import common as C
 
-VERSION = "1.0.1"
+VERSION = "1.2.0"
 DIST    = C.ROOT / "dist"
 REL     = C.ROOT / "release"
 
@@ -51,8 +51,11 @@ def main():
         sys.exit(f"version mismatch: package.py says {VERSION}, DLL says {dll_version()}")
 
     print(f"Better Flight {VERSION}  |  Steam build {bid}  |  toolchain {st['mbincompiler']}\n")
-    print("  building flight tuning ...");      sh([C.ROOT / "build_mod.py", "--build"])
     print("  building control remap ...");      sh([C.ROOT / "controls_mod.py", "--build"])
+    print("  flight simulator tests ...")
+    out = sh([C.ROOT / "native" / "build.sh", "simtest"])
+    if "SIMTEST PASS" not in out:
+        sys.exit("flight simulator tests failed:\n" + out)
     print("  building + self-testing DLL ...")
     out = sh([C.ROOT / "native" / "build.sh", "selftest"])
     if "SELFTEST PASS" not in out:
@@ -63,8 +66,6 @@ def main():
     shutil.rmtree(stage, ignore_errors=True)
 
     payload = {
-        "GAMEDATA/MODS/BetterFlight/GCSPACESHIPGLOBALS.GLOBAL.MBIN":
-            C.WORK / "build" / "GCSPACESHIPGLOBALS.GLOBAL.MBIN",
         "GAMEDATA/MODS/BetterFlightControls/METADATA/INPUT/BINDINGS/GCINPUTBINDINGS_WIN_KEYBOARD.MBIN":
             C.WORK / "controls" / "gcinputbindings_win_keyboard.MBIN",
         "Binaries/winmm.dll":                          C.ROOT / "native" / "build" / "winmm.dll",

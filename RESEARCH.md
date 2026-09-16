@@ -79,7 +79,10 @@ Notable:
   real momentum and drift.
 - **`Follow*Gain` / `Follow*Limit`** are a genuine **PID controller** steering the ship
   toward the aim vector. Retuning this is where "weight" comes from.
-- **`RollAmount`** is the yaw→roll auto-bank coupling. Zero it to decouple.
+- **`RollAmount`** ~~is the yaw→roll auto-bank coupling~~ — **wrong, see §13**. It is the
+  strength of MANUAL roll input; zeroing it disabled Q/E roll entirely (v0.1 bug). The
+  yaw→roll auto-bank is the `RudderToRoll*` group, and it is subtle in vanilla
+  (multipliers 0.05–0.16), a slight bank into the turn rather than a visible roll.
 - **`MinSpeed`** defaults to **20** in atmosphere, **1** in space — the "always moving
   forward" complaint.
 
@@ -1011,6 +1014,92 @@ timestamps are now zeroed after linking.
 
 **Lesson:** Wine is more permissive than Windows about DLL imports. "Works under Proton"
 does not imply "works on Windows" for anything touching the loader.
+
+---
+
+## 15. Corvettes flew themselves during EVA
+
+**Report (1.1.0 era):** on EVA from a corvette, the jetpack/roll keys also strafed the
+corvette. It flew off into space. Single-seat ships were unaffected.
+
+**Cause.** `UpdateControlled` has three callers, all in `cGcSpaceshipComponent::Update`
+(build 25320008: `+0x173ecb2`, `+0x173f031`, `+0x173f247`). The game's own test before
+flying a ship for the player is:
+
+```
+lea rcx,[rsi+0x60C0]; call IsValid      ; controller handle: ptr && *ptr
+test al,al; je ..
+cmp byte [rsi+0x60C8],0; jne controlled ; controller active
+cmp dword [rsi+0x6420],3; je controlled
+mov rax,[rsi+0x28]; cmp dword [rax+0xD0],0xA ; ship class 10 = Corvette
+jne uncontrolled
+...                                     ; corvette: UpdateControlled anyway
+```
+
+Corvettes are updated as "controlled" with **nobody at the controls**, so they keep
+simulating while the player walks around inside or goes on EVA. The hook ran after every
+call and applied whatever keys were held.
+
+**Fix.** `flight_tick` now stands down unless the controller handle is valid **and** the
+controller-active byte is set, the same test the game uses for every non-corvette path.
+While standing down it reads no keys, so jetpack keys don't toggle Z/F8 either. The
+offsets come from two independent signatures (`SIG_PILOT_CHECK`, and `SIG_PILOT_BRANCH`,
+whose call target must be `UpdateControlled`). If neither resolves, the mod keeps its old
+behaviour and logs it. The selftest requires the pilot check. Simulator tests P/P′/P″
+cover it.
+
+**Unverified in game:** whether a piloted ship ever runs with the active byte clear (the
+`+0x6420 == 3` path). If it does, the mod would stand down in that state. `Debug=1` logs
+every transition as `no pilot at the controls` / `pilot back at the controls`.
+
+---
+
+## 16. Flight retune moved from a data mod into the DLL
+
+**Why:** the 1.1.x retune shipped as a replacement `GCSPACESHIPGLOBALS.GLOBAL.MBIN`.
+Loose mods replace whole files, so it conflicted with every mod touching that file
+(reported with *Prepare To Sky (PTSd)*). The DLL now applies the same 176 changes in
+memory, on top of whatever the game loaded.
+
+**Reflection metadata in NMS.exe** (layouts as documented in NMS.py `tools/extract.py`):
+
+| Record | Size | Fields used |
+|---|---|---|
+| `cTkMetaDataClass` | 0x28, in `.rdata` | +0x00 name, +0x18 member table, +0x20 count, +0x24 size |
+| `cTkMetaDataMember` | 0x58 | +0x00 name, +0x0C type (0x03 struct, 0x0E float), +0x14 size, +0x1C offset, +0x20 class |
+
+- `cGcSpaceshipGlobals`: 723 members, 0x1EC0 bytes. Its member table is in `.bss` and
+  is filled in by static initialisers (`lea rax,[name]; mov [rec],rax; mov [rec+..],imm`).
+  In game it is already filled when the DLL looks, about 40 ms after the flight hook goes in.
+- `cGcPlayerSpaceshipControlData` (23 members: `SpaceEngine` 0x15C, `PlanetEngine` 0xE8,
+  `CombatEngine` 0x74, `AtmosCombatEngine` 0x0) and `cGcPlayerSpaceshipEngineData`
+  (29 members) have member tables stored in the file. Offline selftest covers them.
+- Six control blocks carry the `ControlData` class: `Control`, `ControlLight`,
+  `ControlHeavy`, `ControlHeavyHover`, `ControlCorvette`, `ControlHover`. The DLL finds
+  them by class, so a new ship type's block would be picked up automatically.
+
+**Loaded instance.** As in NMS.py `globals.py`: `.rdata` string
+`/GcSpaceshipGlobals.global.mbin` ← one `.data` slot ← one load stub
+`mov rdx,[rip+slot]; lea rcx,[rip+instance]; jmp loader` (build 25320008: stub
+`+0x2786150`, instance `+0x5217F20` in `.bss`, loader `+0x2789B70`). Each of the 38
+globals files has its own stub and its own loader; the loader takes two register
+arguments and returns a bool.
+
+**MBIN = memory layout.** The MBIN header is 0x20 bytes (its template hash and GUID
+equal the class record's), then the struct. At metadata offsets all 176 tuned fields
+match MBINCompiler's decode of both the vanilla and the 1.1.x modded file.
+
+**Applying.** No loader hook. On every `UpdateControlled` call the DLL compares each
+tuned value with the bits it last wrote. Anything else means the game loaded or changed
+it, so the change is applied again on that value (set, or multiply). `FlightRetune=0` or
+F8 writes the loaded values back. If `GAMEDATA/MODS/BetterFlight` still exists, the
+retune is skipped so nothing is applied twice.
+
+**Verified in game (build 25320008):** 176/176 fields retuned on the first flight frame.
+Every loaded value equals vanilla and every written value equals the 1.1.x data mod.
+
+**Not yet verified in game:** F8 / `FlightRetune=0` restore (simulator only), and
+running alongside PTSd.
 
 ---
 

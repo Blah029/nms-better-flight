@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.2.0 — 2026-09-15
+
+- **Flight retune moved into the DLL.** Up to 1.1.1 it shipped as a replacement
+  `GCSPACESHIPGLOBALS.GLOBAL.MBIN`, which conflicted with every mod touching that
+  file. `winmm.dll` now finds the same 176 flight values by name, through the
+  game's own reflection metadata, and applies them in memory on top of whatever the
+  game loaded. Tested with *Prepare To Sky*: PTSd's values load, Better Flight's
+  changes go on top, and PTSd's other 103 ship changes stay as they are.
+- **Updating: delete `GAMEDATA/MODS/BetterFlight`.** While it is present the DLL
+  skips the retune (and logs why), so nothing is applied twice.
+- New `FlightRetune` setting (default 1). `0`, or F8, puts the loaded values back.
+- If the game reloads its flight data, the retune is applied again on the new values.
+- Fields a future game version renames are skipped and logged; the rest still apply.
+
+## 1.1.1 — 2026-09-15
+
+- **Fixed: a corvette could be flown from outside the pilot seat.** On a spacewalk
+  (or walking around inside), strafe and coupled braking still moved the corvette, so
+  jetpack keys sent it flying off. The game keeps simulating corvettes with nobody at
+  the controls; Better Flight now acts only when the game reports a pilot at the
+  controls, and reads no keys otherwise.
+- Rebuilt for Steam build 25320008 (Cosmos 7.02). The control layout is generated
+  from the updated default bindings, so the on-foot alt-weapon key stays on B.
+- Docs: on a spacewalk the game's roll is Shift+Q / Shift+E (not shown in its
+  settings).
+
+## 1.1.0 — 2026-09-14
+
+- **Coupled / decoupled flight** (Z, default coupled at every launch).
+  Coupled: the ship holds zero velocity on every axis you aren't commanding, so
+  releasing the throttle brakes to a full stop along the direction of travel
+  (`RetroAccel` for forward motion, `MainAccel` for backward). Decoupled: no
+  braking at all — speed and direction are kept through turns and flips, e.g.
+  boost to top speed, flip 180° and keep flying backwards.
+- **Real momentum** (`WorldMomentum`): above `MomentumMinSpeed` (30 m/s) the
+  game's pull toward the nose, drift correction and throttle wind-down are
+  ignored. Below it the game handles landing, take-off and hover as normal.
+- The mod hands control to the game during pulse jump, landing and auto-follow
+  (`AutopilotKeys`, plus detection of pulse spool-up and hard impacts).
+- **Multiple inputs per action, including mouse buttons** (`Mouse1`–`Mouse5`),
+  for the strafe/mode keys in `BetterFlight.ini` and for the relocated vanilla
+  actions.
+- F8 now switches every Better Flight native feature on/off.
+- **Fixed: ships couldn't stop or reverse in atmosphere** — they kept creeping
+  forward. Atmospheric minimum speed is now 0.
+- Drift safety cap (`DriftSpeedCap`) applies only to sideways + vertical speed.
+
 ## 1.0.1 — 2026-09-14
 
 - **Fixed: game failed to launch on Windows** with *"The procedure entry point

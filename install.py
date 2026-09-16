@@ -3,10 +3,11 @@
 Better Flight - one-shot installer.
 
 Installs everything, from controls.ini:
-  1. GAMEDATA/MODS/BetterFlight          flight model retune       (build_mod.py)
-  2. GAMEDATA/MODS/BetterFlightControls  vanilla key relocation    (controls_mod.py)
-  3. Binaries/winmm.dll + BetterFlight.ini   native strafe mod     (native/)
-  4. Linux only: the Wine DLL override for NMS.exe, written into the Proton
+  1. GAMEDATA/MODS/BetterFlightControls  vanilla key relocation    (controls_mod.py)
+  2. Binaries/winmm.dll + BetterFlight.ini   native mod: strafe, coupled flight
+     and the flight retune (applied in memory since 1.2.0; the old
+     GAMEDATA/MODS/BetterFlight data mod is removed if present)
+  3. Linux only: the Wine DLL override for NMS.exe, written into the Proton
      prefix registry, so no Steam launch option is needed.
 
     ./install.py              install / update everything
@@ -156,7 +157,7 @@ def main():
         return
 
     C.require_current_toolchain()
-    sh([C.ROOT / "build_mod.py"])
+    sh([C.ROOT / "build_mod.py", "--uninstall"])   # the DLL applies the retune now
     sh([C.ROOT / "controls_mod.py"])
     sh([C.ROOT / "native" / "build.sh"])
 
