@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.3.0 — 2026-10-02
+
+- **Coupled mode is now vanilla flight plus strafe.** The mod's own coupled
+  braking is gone: no more braking to a stop, no `RetroAccel` / `MainAccel`. In
+  coupled mode the game's flight model runs exactly as loaded — turns, banking,
+  braking, minimum speed, damping — and the only thing added on top is the
+  strafe / up-down thrust. The game's flight assist works against it, so
+  coupled strafe is a gentle push; raise `LateralAccel` / `VerticalAccel` in
+  `BetterFlight.ini` (re-read live) for more.
+- **The flight retune is now decoupled-mode only** (152 of its 176 values).
+  Toggling to coupled restores the game's loaded values for those fields;
+  toggling back re-applies them on top. `FlightRetune = 0` leaves the flight
+  data untouched in both modes.
+- **Space minimum speed is 0 in both modes** (`MinSpeed` / `MinSpeedForce` on
+  the space engines, 24 values, applied always) — the ship can come fully to
+  rest in space even in coupled mode. Atmospheric minimum speed follows the
+  mode: vanilla in coupled, 0 in decoupled.
+- **World momentum is decoupled-mode only.** In coupled mode the game's own
+  handling of velocity (steering toward the nose, drift, throttle wind-down)
+  runs untouched; `WorldMomentum` / `MomentumMinSpeed` no longer apply there.
+- `DriftSpeedCap` still applies in both modes (safety net).
+- Simulator: the coupled braking tests (C, F', I, I', S, U'', K, Y') were
+  reworked to verify the new behaviour (no mod writes, game model untouched),
+  and new tests cover the mode-toggled retune scope and coupled strafe against
+  the vanilla assist.
+
 ## 1.2.0 — 2026-09-15
 
 - **Flight retune moved into the DLL.** Up to 1.1.1 it shipped as a replacement

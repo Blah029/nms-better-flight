@@ -31,13 +31,25 @@ BUILT    = WORK / "build" / TARGET
 # PlanetEngine / AtmosCombatEngine -> atmosphere     (gentler; the ground
 #   proximity assists still need something to work with)
 
+# Applied in BOTH flight modes (coupled and decoupled): zero minimum speed in
+# space, so the ship can come to rest even when the rest of the flight model
+# is vanilla. Everything else below is decoupled-mode only - coupled mode
+# keeps the game's loaded values for its turns, banking, braking and damping.
+ALWAYS_ENGINE_TUNING = {
+    "SpaceEngine": {
+        "MinSpeed":      0.0,
+        "MinSpeedForce": 0.0,
+    },
+    "CombatEngine": {
+        "MinSpeed":      0.0,
+        "MinSpeedForce": 0.0,
+    },
+}
+
 SPACE = {
     # NOTE: RollAmount is deliberately NOT touched. It is the strength of MANUAL
     # roll input (Q/E); zeroing it disabled roll entirely (v0.1 bug). Yaw->roll
     # banking is the RudderToRoll* group in GLOBAL_TUNING below.
-    # Let the ship actually stop. MinSpeed is the forever-drifting-forward fix.
-    "MinSpeed":          0.0,
-    "MinSpeedForce":     0.0,
     # The flight assist. Vanilla bleeds off any velocity not aligned with the
     # nose; cutting this is what produces real momentum and drift.
     "DirectionBrake":    ("mul", 0.10),
@@ -50,11 +62,6 @@ SPACE = {
 }
 
 ATMOS = {
-    # Same as space: no minimum speed, so you can stop, hover and reverse in
-    # atmosphere. (1.0.x kept a quarter of vanilla here - 5 m/s with a force
-    # pushing back up to it - which made the ship creep and never reverse.)
-    "MinSpeed":          0.0,
-    "MinSpeedForce":     0.0,
     "DirectionBrake":    ("mul", 0.35),
     "DirectionBrakeMin": ("mul", 0.35),
     "RollAutoTime":      1000.0,
@@ -68,6 +75,17 @@ ENGINE_TUNING = {
     "PlanetEngine":     ATMOS,
     "AtmosCombatEngine": ATMOS,
 }
+
+# The legacy data-mod path (this script) ships the full retune in the MBIN -
+# the union of both tables, since a file on disk has no notion of modes.
+def engine_tuning_all():
+    out = {}
+    for table in (ALWAYS_ENGINE_TUNING, ENGINE_TUNING):
+        for engine, fields in table.items():
+            merged = dict(out.get(engine, {}))
+            merged.update(fields)
+            out[engine] = merged
+    return out
 
 # Top-level globals. Same value convention.
 GLOBAL_TUNING = {
@@ -143,7 +161,7 @@ def apply_tuning(show_diff=False):
         bname = block.get("name")
         for engine in block:
             ename = engine.get("name")
-            tuning = ENGINE_TUNING.get(ename)
+            tuning = engine_tuning_all().get(ename)
             if not tuning:
                 continue
             seen = set()

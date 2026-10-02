@@ -1103,6 +1103,83 @@ running alongside PTSd.
 
 ---
 
+## 17. The 1.3.0 build, the vanilla flight values, and coupled scope
+
+**A newer game build.** The install checked for 1.3.0 (NMS.exe 88,545,352 bytes,
+newer than the 88,481,352 documented in §12) updated every signature to new
+addresses (`UpdateControlled +0x1754B90`, `GetVelocity +0x1754750`,
+`SetLinearVelocity +0x2CC0B20`, `GetTransform +0x296470`) and found all 176
+retune values on the first flight frame — the name-based lookup holds.
+
+**MBINCompiler version moved on.** Probing released compilers against the
+mounted build's `gcspaceshipglobals.global.mbin`: **v7.04.1-pre3** round-trips it
+losslessly (8,372 data bytes, 6 header-stamp bytes — the same figures §12
+recorded for the older build). `setup_tools.py`'s probe keeps this honest after
+every update.
+
+**Vanilla flight values** (decompiled `gcspaceshipglobals.global.mbin`, the
+`Control` block — the standard player ships). Per-engine profiles (31 fields
+each; the four shown are the ones the retune touches):
+
+| Field | Space | Planet | Combat | AtmosCombat |
+|---|---|---|---|---|
+| `ThrustForce` | 40 | 20 | 40 | 40 |
+| `MaxSpeed` | 180 | 125 | 115 | 80 |
+| `MinSpeed` | **1** | **20** | 50 | 10 |
+| `MinSpeedForce` | 5 | 31 | 30 | 30 |
+| `BoostThrustForce` / `BoostMaxSpeed` | 500 / 1200 | 100 / 155 | 500 / 1200 | 100 / 155 |
+| `DirectionBrake` / `DirectionBrakeMin` | **1.5 / 1.0** | 1.5 / 1.0 | 2.0 / 1.0 | 2.0 / 1.0 |
+| `ReverseBrake` | 0.5 | 1.0 | 0.5 | 0.5 |
+| `OverspeedBrake` | 3.0 | 3.0 | 3.0 | 3.0 |
+| `TurnStrength` | 1.0 | 1.0 | 1.3 | 1.3 |
+| `TurnBrakeMin` / `TurnBrakeMax` | 1.0 / 2.0 | 1.0 / 3.0 | 1.0 / 4.0 | 1.0 / 4.0 |
+| `RollAmount` / `RollForce` | 2.0 / 1.25 | 2.0 / 1.25 | 2.0 / 1.25 | 2.0 / 1.25 |
+| `RollAutoTime` | 2.0 | 0.5 | 2.0 | 2.0 |
+| `Follow` PID P/D/I (limits) | 0.1 / 0.05 / 0.15 (60 / 10 / 1.2) | same | same | same |
+
+Plus, per control block: `AngularFactor` 0.1, `MaxTorque` 10000. Top-level
+globals: `RudderToRollMultiplier` min/max/opposite/space/low =
+**0.09 / 0.16 / 2.0 / 0.15 / 0.05** (cutoff 70°, upside-down 110°, bank angles
+−30°/40°/45°); `DirectionBrakeVerticalMultiplier` **5.0**;
+`LateralDriftRollAmount` 0.1 / `LateralDriftRange` 60; `LinearDamping` **0.01**;
+`AngularDamping` 0; `TurnRudderStrength` 0.4; `ThrustDecaySpring` 20;
+`AutoLevel` 5–110° (pitch −10–45°); `GravityDropForce` 0; `ApplyHeightForce` /
+`ApplyHeightAlign` true; `MaxOverspeedBrake` 1000. (The `ControlCorvette` and
+`ControlHover` blocks have `PlanetEngine.MinSpeed` 1, not 20 — hover and
+corvette ships can already hover in vanilla.)
+
+These are the "default characteristics" coupled mode now preserves: the 152
+decoupled-scope retune values are the cuts/boosts *relative to the table above*
+(e.g. `DirectionBrake` ×0.1 → 0.15 in space), and coupled mode leaves them at
+the loaded values.
+
+**Coupled strafe equilibrium.** `DirectionBrake` is a multiplier on a base force
+whose exact model lives in NMS.exe, so the equilibrium can't be computed from
+data alone. What is known: at the decoupled cut (effective 0.15 in space), a
+140 m/s² lateral thrust reaches the 140 m/s strafe cap, so the assist force at
+140 m/s is < 140 m/s². At the full vanilla 1.5 (10×), a linear model puts the
+equilibrium of a 140 m/s² push at roughly **~14 m/s** — coupled strafe is a
+gentle push against the vanilla assist. Accepted as-is (1.3.0): the strafe
+thrust is raw in both modes, and `LateralAccel` / `VerticalAccel` are live-
+tunable in `BetterFlight.ini` for users who want more. The simulator covers
+both ends (AC / AC'): at full assist strength the 70 m/s² default thrust
+builds no sideways speed at all; at the ×0.1 cut it builds to the cap.
+
+**Scope split (1.3.0).** The 176 retune values now carry a scope:
+
+| Scope | Values | Applied |
+|---|---|---|
+| always | 24 = {`MinSpeed`, `MinSpeedForce`} × {`SpaceEngine`, `CombatEngine`} × 6 blocks, all set to 0 | both modes |
+| decoupled | 120 = remaining 20 engine fields × 6 blocks | decoupled only |
+| decoupled | 8 globals (`RudderToRoll*` ×5, `LateralDriftRollAmount`, `LinearDamping`, `DirectionBrakeVerticalMultiplier`) | decoupled only |
+
+The per-entry restore machinery of §16 does the mode switching: an entry whose
+`want` goes false writes its remembered loaded value back, so toggling to
+coupled restores 152 values and back to decoupled re-applies them on top —
+no separate restore table.
+
+---
+
 ## Sources
 
 - [MBINCompiler / libMBIN](https://github.com/monkeyman192/MBINCompiler)

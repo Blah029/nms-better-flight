@@ -4,8 +4,9 @@
 ===============================================================================
 
 Strafe sideways, thrust up and down, and switch between coupled and decoupled
-flight. Real momentum: the ship keeps flying the way you sent it instead of
-being pulled toward the nose.
+flight. Coupled is the game's own vanilla handling plus the strafe keys;
+decoupled is full 6DOF with real momentum: the ship keeps flying the way you
+sent it instead of being pulled toward the nose.
 
 
 -------------------------------------------------------------------------------
@@ -18,10 +19,11 @@ being pulled toward the nose.
     overwrite files (when updating, this replaces the old version).
  4. Launch the game normally.
 
- UPDATING FROM 1.1.1 OR EARLIER: also delete the folder
- GAMEDATA/MODS/BetterFlight. The flight retune is built into winmm.dll now.
- If the old folder is still there, the mod skips its retune so nothing is
- applied twice.
+ UPDATING FROM 1.2.X OR EARLIER: also delete the folder
+ GAMEDATA/MODS/BetterFlight if it exists. The flight retune is built into
+ winmm.dll now. If the old folder is still there, the mod skips its retune so
+ nothing is applied twice. (1.3.0: coupled mode is now vanilla flight plus
+ strafe - it no longer brakes the ship to a stop.)
 
  Manual install is recommended over mod managers: part of this mod goes in
  the Binaries folder, which mod managers don't always handle.
@@ -63,14 +65,15 @@ being pulled toward the nose.
  COUPLED AND DECOUPLED FLIGHT  (Z)
 -------------------------------------------------------------------------------
  COUPLED (the default every time you launch)
-   Thrusters hold you to what you command. Release W, boost and the strafe
-   keys and the ship brakes to a full stop in every direction. No sideways
-   slide when you turn.
+   The game's own flight model, exactly as vanilla: turns, banking, braking,
+   minimum speed. The only additions are the strafe and up/down thrusters.
+   The game's flight assist works against them, so coupled strafe is a
+   gentle push - raise LateralAccel / VerticalAccel for more.
 
  DECOUPLED
-   Nothing slows you down. Boost to top speed, let go, flip the ship around
-   and keep flying backwards at full speed. Your speed only changes when you
-   thrust. Press Z again to re-couple and the ship brakes to a stop.
+   Full 6DOF: nothing slows you down. Boost to top speed, let go, flip the
+   ship around and keep flying backwards at full speed. Your speed only
+   changes when you thrust. Press Z again to re-couple.
 
  Good to know:
   - Below about 30 m/s the game's own flight takes over, so landing, take-off
@@ -105,14 +108,12 @@ being pulled toward the nose.
   LateralAccel      strafe thruster strength              (default 70)
   VerticalAccel     up/down thruster strength             (default 55)
   MaxStrafeSpeed    strafe won't push past this           (default 140)
-  RetroAccel        coupled braking of forward motion     (default 60)
-  MainAccel         coupled braking of backward motion    (default 120)
-  ThrustKey /       your throttle keys, used by coupled mode
+  ThrustKey /       your throttle keys, as the mod sees them
   BrakeKey /
   BoostKey
   AutopilotKeys     keys that hand control to the game    (default N, B, F)
-  WorldMomentum     0 = the game's own momentum handling  (default 1)
-  FlightRetune      0 = the game's own handling tuning    (default 1)
+  WorldMomentum     (decoupled only) game's own handling (default 1)
+  FlightRetune      (decoupled only) game's own tuning    (default 1)
   InvertLateral /   flip a direction
   InvertVertical
   Debug = 1         writes Binaries/BetterFlight.log  (for bug reports)

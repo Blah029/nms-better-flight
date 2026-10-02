@@ -25,7 +25,7 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.2.0"
+#define BF_VERSION "1.3.0"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
@@ -238,7 +238,6 @@ static struct {
     keyset_t strafe_left, strafe_right, strafe_up, strafe_down, toggle, decouple;
     keyset_t thrust, brake, boost, autopilot_keys;
     float lateral_accel, vertical_accel, max_strafe_speed;
-    float retro_accel, main_accel;
     float autopilot_accel, low_speed_autopilot_accel, autopilot_seconds, impact_accel;
     float drift_cap, momentum_min_speed;
     int world_momentum;
@@ -320,8 +319,6 @@ static void load_config(void)
     cfg.thrust           = ini_keys(L"coupled", L"ThrustKey",   'W');
     cfg.brake            = ini_keys(L"coupled", L"BrakeKey",    'S');
     cfg.boost            = ini_keys(L"coupled", L"BoostKey",    VK_LSHIFT);
-    cfg.retro_accel      = ini_float(L"coupled", L"RetroAccel",     60.0f);
-    cfg.main_accel       = ini_float(L"coupled", L"MainAccel",      120.0f);
     cfg.autopilot_keys   = ini_keys(L"coupled", L"AutopilotKeys", 0);
     cfg.autopilot_seconds         = ini_float(L"coupled", L"AutopilotSeconds",       6.0f);
     cfg.autopilot_accel           = ini_float(L"coupled", L"AutopilotAccel",         300.0f);
@@ -338,15 +335,14 @@ static void load_config(void)
     cfg.debug            = ini_float(L"tuning", L"Debug",          0) != 0;
     cfg.flight_retune    = ini_float(L"tuning", L"FlightRetune",   1) != 0;
     char k1[40], k2[40], k3[40], k4[40], k5[40], k6[40], k7[40], k8[40], k9[40], k10[40];
-    logmsg("config: strafe L=%s R=%s U=%s D=%s decouple=%s toggle=%s | coupled thrust=%s brake=%s boost=%s "
-           "retro=%.0f main=%.0f | hand-off keys=%s %.0fs, fwd push>%.0f, impact>%.0f, >%.0f below momentum speed | "
-           "accel lat=%.1f vert=%.1f max=%.1f | world momentum=%d "
-           "(above %.0f m/s) drift cap=%.0f | invert lat=%d vert=%d | debug=%d",
+    logmsg("config: strafe L=%s R=%s U=%s D=%s decouple=%s toggle=%s | coupled throttle keys thrust=%s brake=%s boost=%s | "
+           "hand-off keys=%s %.0fs, fwd push>%.0f, impact>%.0f, >%.0f below momentum speed | "
+           "accel lat=%.1f vert=%.1f max=%.1f | world momentum=%d (decoupled, above %.0f m/s) drift cap=%.0f "
+           "| invert lat=%d vert=%d | debug=%d",
            fmt_keys(&cfg.strafe_left, k1, 40), fmt_keys(&cfg.strafe_right, k2, 40),
            fmt_keys(&cfg.strafe_up, k3, 40), fmt_keys(&cfg.strafe_down, k4, 40),
            fmt_keys(&cfg.decouple, k5, 40), fmt_keys(&cfg.toggle, k6, 40),
            fmt_keys(&cfg.thrust, k7, 40), fmt_keys(&cfg.brake, k8, 40), fmt_keys(&cfg.boost, k9, 40),
-           cfg.retro_accel, cfg.main_accel,
            fmt_keys(&cfg.autopilot_keys, k10, 40), cfg.autopilot_seconds,
            cfg.autopilot_accel, cfg.impact_accel, cfg.low_speed_autopilot_accel,
            cfg.lateral_accel, cfg.vertical_accel, cfg.max_strafe_speed,
@@ -608,7 +604,7 @@ static struct {
     unsigned frames;
     float ga_r, ga_u, ga_f;   /* game's own push per ship axis, mean |m/s^2| */
     float discarded;          /* m/s of game push discarded on uncommanded axes */
-    float braked;             /* m/s removed by coupled braking */
+
     unsigned handoff_frames;
     int capped;
 } D;
@@ -714,20 +710,25 @@ _Static_assert(sizeof(meta_member_t) == 0x58, "cTkMetaDataMember is 0x58 bytes")
 #define META_FLOAT  0x0E
 
 enum { BF_SET, BF_MUL };
-typedef struct { const char *engine, *field; int op; float value; } engine_tune_t;
+enum { TUNE_ALWAYS, TUNE_DECOUPLED };   /* always: both flight modes; decoupled: decoupled mode only */
+typedef struct { const char *engine, *field; int op; float value; unsigned scope; } engine_tune_t;
 typedef struct { const char *field; int op; float value; } global_tune_t;
 
 static const engine_tune_t ENGINE_TUNES[] = {
-#define BF_ENGINE_TUNE(e, f, o, v) { e, f, o, v },
+#define BF_ENGINE_TUNE_ALWAYS(e, f, o, v) { e, f, o, v, TUNE_ALWAYS },
+#define BF_ENGINE_TUNE(e, f, o, v) { e, f, o, v, TUNE_DECOUPLED },
 #define BF_GLOBAL_TUNE(f, o, v)
 #include "flight_tuning.inc"
+#undef BF_ENGINE_TUNE_ALWAYS
 #undef BF_ENGINE_TUNE
 #undef BF_GLOBAL_TUNE
 };
 static const global_tune_t GLOBAL_TUNES[] = {
+#define BF_ENGINE_TUNE_ALWAYS(e, f, o, v)
 #define BF_ENGINE_TUNE(e, f, o, v)
 #define BF_GLOBAL_TUNE(f, o, v) { f, o, v },
 #include "flight_tuning.inc"
+#undef BF_ENGINE_TUNE_ALWAYS
 #undef BF_ENGINE_TUNE
 #undef BF_GLOBAL_TUNE
 };
@@ -740,6 +741,7 @@ typedef struct {
     int      op, applied;
     float    value, baseline;
     uint32_t written;                 /* bit pattern we last wrote */
+    unsigned scope;                   /* TUNE_ALWAYS / TUNE_DECOUPLED */
     char     label[72];
 } retune_t;
 
@@ -889,12 +891,12 @@ static int retune_find(int verbose)
     return RT.found;
 }
 
-static void retune_add(int32_t offset, int op, float value, const char *fmt, ...)
+static void retune_add(int32_t offset, int op, float value, unsigned scope, const char *fmt, ...)
 {
     if (RT.n >= MAX_RETUNE || offset < 0 || offset + 4 > RT.globals->size) return;
     retune_t *e = &RT.e[RT.n++];
     memset(e, 0, sizeof *e);
-    e->offset = offset; e->op = op; e->value = value;
+    e->offset = offset; e->op = op; e->value = value; e->scope = scope;
     va_list ap; va_start(ap, fmt); vsnprintf(e->label, sizeof e->label, fmt, ap); va_end(ap);
 }
 
@@ -922,7 +924,7 @@ static int retune_expand(int verbose)
                 continue;
             }
             retune_add(blk->offset + eng->offset + fld->offset, ENGINE_TUNES[t].op, ENGINE_TUNES[t].value,
-                       "%s.%s.%s", meta_name(blk), ENGINE_TUNES[t].engine, ENGINE_TUNES[t].field);
+                       ENGINE_TUNES[t].scope, "%s.%s.%s", meta_name(blk), ENGINE_TUNES[t].engine, ENGINE_TUNES[t].field);
         }
     }
     for (size_t t = 0; t < N_GLOBAL_TUNES; t++) {
@@ -932,7 +934,7 @@ static int retune_expand(int verbose)
             missing++;
             continue;
         }
-        retune_add(m->offset, GLOBAL_TUNES[t].op, GLOBAL_TUNES[t].value, "%s", GLOBAL_TUNES[t].field);
+        retune_add(m->offset, GLOBAL_TUNES[t].op, GLOBAL_TUNES[t].value, TUNE_DECOUPLED, "%s", GLOBAL_TUNES[t].field);
     }
     logmsg("flight data: %d values to retune across %d ship control blocks (%d missing)", RT.n, blocks, missing);
     if (RT.n == 0) return 0;
@@ -941,15 +943,19 @@ static int retune_expand(int verbose)
 }
 
 /* Called every flight frame: apply, re-apply after the game changed a value,
- * or put the loaded values back when the retune is switched off. */
+ * or put the loaded values back when the retune is switched off.
+ * Scope: TUNE_ALWAYS entries apply in both flight modes (zero space min-speed);
+ * TUNE_DECOUPLED entries apply only while decoupled - in coupled mode the
+ * game's loaded flight data is left untouched for those fields. */
 static void retune_tick(void)
 {
     if (!RT.ready) return;
-    int want = cfg.flight_retune && g_enabled && !RT.blocked, changed = 0;
+    int on = cfg.flight_retune && g_enabled && !RT.blocked, changed = 0;
     for (int i = 0; i < RT.n; i++) {
         retune_t *e = &RT.e[i];
         uint8_t *at = RT.instance + e->offset;
         uint32_t bits; memcpy(&bits, at, 4);
+        int want = on && (e->scope == TUNE_ALWAYS || g_decoupled);
         if (!want) {
             if (e->applied) {
                 if (bits == e->written) memcpy(at, &e->baseline, 4);
@@ -967,8 +973,8 @@ static void retune_tick(void)
         e->baseline = cur; e->applied = 1; changed++;
     }
     if (changed)
-        logmsg(want ? "flight data: retuned %d of %d values on top of the loaded flight data"
-                    : "flight data: put back %d of %d loaded values (retune off)", changed, RT.n);
+        logmsg(on ? "flight data: retuned %d of %d values on top of the loaded flight data"
+                  : "flight data: put back %d of %d loaded values (retune off)", changed, RT.n);
 }
 
 /* Init thread, after the flight hook is in. Waits for the game's startup code
@@ -1160,13 +1166,15 @@ static void flight_tick(void *ship, float dt)
 
     int changed = 0;
 
-    /* 1. Momentum: keep only what the pilot commanded.
+    /* 1. Momentum (decoupled mode only): keep only what the pilot commanded.
      * Above MomentumMinSpeed, whatever the game did to the velocity on an axis
      * the pilot isn't commanding is discarded - its steering toward the nose,
      * drift pull, throttle wind-down. The velocity stays fixed in space no
      * matter HOW the game would have bent it. W/S/boost still pass the game's
-     * throttle through along the nose. Our own strafe thrust comes after. */
-    if (!resync && !handoff && cfg.world_momentum && len3(M.v) > cfg.momentum_min_speed) {
+     * throttle through along the nose. Our own strafe thrust comes after.
+     * In coupled mode the game's flight model (steering, braking, min-speed)
+     * is left to run: only the strafe thrust below is added on top of it. */
+    if (!resync && !handoff && g_decoupled && cfg.world_momentum && len3(M.v) > cfg.momentum_min_speed) {
         /* Pass the game's forward change only in the direction the pilot pushes:
          * W/boost keep accelerating, S keeps braking - so holding W above normal
          * speed isn't dragged down by the game's overspeed brake. */
@@ -1187,36 +1195,17 @@ static void flight_tick(void *ship, float dt)
 
     float vr = dot3(v, right), vu = dot3(v, up), vf = dot3(v, at);
 
-    /* 2. Strafe thrusters. */
+    /* 2. Strafe thrusters (both modes). In coupled mode this is the ONLY
+     * flight change on top of the vanilla model: a push along the ship's
+     * right/up axes. The game's flight assist bleeds off sideways velocity,
+     * so coupled strafe is a gentle push against it - not free 6DOF drift.
+     * Raise LateralAccel/VerticalAccel in BetterFlight.ini for more. */
     float dr = thrust(sx, vr, cfg.lateral_accel,  dt, cfg.max_strafe_speed);
     float du = thrust(sy, vu, cfg.vertical_accel, dt, cfg.max_strafe_speed);
-    float df = 0;
 
-    /* 3. Coupled braking (Star Citizen model). Every axis the pilot isn't
-     * commanding targets zero, braked as ONE vector along the direction of
-     * travel, so they all reach zero together and the path doesn't bend. The
-     * rate is the largest every involved thruster can deliver: sideways and
-     * vertical at strafe strength, forward motion with retro thrusters, backward
-     * motion with the main thrusters. */
-    if (!g_decoupled && !resync && !handoff) {
-        float er = sx == 0 ? vr : 0, eu = sy == 0 ? vu : 0, ef = fwd_in ? 0 : vf;
-        float emag = sqrtf(er * er + eu * eu + ef * ef);
-        if (emag > 1e-4f) {
-            float nr = er / emag, nu = eu / emag, nf = ef / emag;
-            float af = ef > 0 ? cfg.retro_accel : cfg.main_accel;
-            float a = 1e30f, c;
-            if (fabsf(nr) > 1e-6f && (c = cfg.lateral_accel  / fabsf(nr)) < a) a = c;
-            if (fabsf(nu) > 1e-6f && (c = cfg.vertical_accel / fabsf(nu)) < a) a = c;
-            if (fabsf(nf) > 1e-6f && (c = af                 / fabsf(nf)) < a) a = c;
-            float step = a * dt;
-            if (step > emag) step = emag;
-            dr -= nr * step; du -= nu * step; df -= nf * step;
-            D.braked += step;
-        }
-    }
-    if (dr != 0 || du != 0 || df != 0) {
-        for (int i = 0; i < 3; i++) v[i] += right[i] * dr + up[i] * du + at[i] * df;
-        vr += dr; vu += du; vf += df;
+    if (dr != 0 || du != 0) {
+        for (int i = 0; i < 3; i++) v[i] += right[i] * dr + up[i] * du;
+        vr += dr; vu += du;
         changed = 1;
     }
 
@@ -1244,9 +1233,9 @@ static void flight_tick(void *ship, float dt)
     if (cfg.debug && now >= g_next_diag) {
         g_next_diag = now + 1000;
         logmsg("diag: %s |v|=%6.1f right=%7.1f up=%7.1f at=%7.1f in x=%+.0f y=%+.0f fwd=%d dt=%.4f | "
-               "braked %.0f, discarded game push %.0f m/s%s%s%s",
+               "discarded game push %.0f m/s%s%s%s",
                g_decoupled ? "DECOUP" : "COUPLED", speed, vr, vu, vf, ix, iy, fwd_in, dt,
-               D.braked, D.discarded,
+               D.discarded,
                D.capped ? " | DRIFT CAPPED" : "", resync ? " | resync" : "", handoff ? " | hand-off" : "");
         logmsg("measure: game push mean |right|=%.0f |up|=%.0f |fwd|=%.0f m/s^2 | hand-off %u/%u frames",
                D.ga_r / D.frames, D.ga_u / D.frames, D.ga_f / D.frames, D.handoff_frames, D.frames);
@@ -1450,14 +1439,18 @@ static void check(const char *name, int ok, const char *fmt, ...)
     if (!ok) fails++;
 }
 
-/* Retune test: how many entries don't hold op(base) (applied) or base (off). */
-static int sim_retune_bad(float base, int applied)
+/* Retune test: how many entries don't hold their expected value. With the
+ * retune on, always-scope entries are applied in both flight modes and
+ * decoupled-scope entries only while decoupled; with it off everything is
+ * restored to the loaded (base) value. */
+static int sim_retune_bad(float base, int on, int decoupled)
 {
     int bad = 0;
     for (int i = 0; i < RT.n; i++) {
         float v; memcpy(&v, RT.instance + RT.e[i].offset, 4);
-        float want = !applied ? base : RT.e[i].op == BF_MUL ? base * RT.e[i].value : RT.e[i].value;
-        if (fabsf(v - want) > 1e-5f) bad++;
+        int want = on && (decoupled || RT.e[i].scope == TUNE_ALWAYS);
+        float q = want ? (RT.e[i].op == BF_MUL ? base * RT.e[i].value : RT.e[i].value) : base;
+        if (fabsf(v - q) > 1e-5f) bad++;
     }
     return bad;
 }
@@ -1509,7 +1502,6 @@ int main(void)
     cfg.strafe_left = KS1('A'); cfg.strafe_right = KS1('D'); cfg.strafe_up = KS1(VK_SPACE); cfg.strafe_down = KS1(VK_LCONTROL);
     cfg.toggle = KS1(VK_F8); cfg.decouple = KS1('Z');
     cfg.thrust = KS1('W'); cfg.brake = KS1('S'); cfg.boost = KS1(VK_LSHIFT);
-    cfg.retro_accel = 60; cfg.main_accel = 120;
     cfg.autopilot_keys = KS1('N'); cfg.autopilot_seconds = 6; cfg.autopilot_accel = 300; cfg.low_speed_autopilot_accel = 20;
     cfg.impact_accel = 6000;
     cfg.lateral_accel = 70; cfg.vertical_accel = 55; cfg.max_strafe_speed = 140;
@@ -1541,27 +1533,37 @@ int main(void)
     check("B' decoupled STEER: 90deg yaw keeps world velocity", angle_deg(W, w0) < 2 && fabsf(len3(W) - 500) < 5,
           "turned %.2f deg, |v|=%.1f", angle_deg(W, w0), len3(W));
 
-    /* Q. the asteroid: coasting at it, look left -> still heading straight at it, braking */
+    /* Q. the asteroid (decoupled): coasting at it, look left -> still heading
+     * straight at it */
     for (int model = 0; model < 2; model++) {
-        sim_reset(300, 0, 0); memcpy(w0, W, sizeof w0); if (model) sim_steer = 400;
+        sim_reset(300, 0, 0); memcpy(w0, W, sizeof w0); g_decoupled = 1;
+        if (model) sim_steer = 400;
         sim_run(60, dt, 0, HALF_PI / 2, model == 0);    /* 45 deg left over 1s */
         check(model ? "Q' asteroid STEER: look left, keep heading at it" : "Q asteroid CARRY: look left, keep heading at it",
-              angle_deg(W, w0) < 2 && len3(W) < 300,
+              angle_deg(W, w0) < 2 && fabsf(len3(W) - 300) < 5,
               "velocity turned %.2f deg, |v| 300 -> %.1f", angle_deg(W, w0), len3(W));
     }
 
-    /* C. coupled: after a turn everything brakes to zero */
-    sim_reset(500, 0, 0);
+    /* C. coupled: the game's flight model runs untouched - under CARRY the
+     * velocity turns with the ship and the mod never writes (no braking, no
+     * momentum discard). The real game's own assists then slow it down. */
+    sim_reset(500, 0, 0); memcpy(w0, W, sizeof w0);
+    sim_writes = 0;
     sim_run(60, dt, 0, HALF_PI, 1);
     sim_run(600, dt, 0, 0, 1);
-    check("C coupled: all momentum braked after 90deg turn", len3(W) < 1, "|v| after 11s = %.2f", len3(W));
+    check("C coupled: velocity turns with the ship, mod writes nothing",
+          fabsf(angle_deg(W, w0) - 90) < 1 && fabsf(len3(W) - 500) < 5 && sim_writes == 0,
+          "turned %.1f deg, |v|=%.1f, writes=%d", angle_deg(W, w0), len3(W), sim_writes);
 
-    /* D. the reported runaway: 2000 m/s sideways, rolling hard */
-    sim_reset(0, 2000, 0);
+    /* D. 2000 m/s sideways, rolling hard, coupled: the game's OWN flight
+     * assist (simulated) shrinks the drift - the mod writes nothing */
+    sim_reset(0, 2000, 0); sim_steer = 100;
+    sim_writes = 0;
     sim_run(1, dt, 1, 0, 1);
     sim_run(300, dt, 1, HALF_PI, 1);
-    check("D bug repro: drift shrinking while rolling", len3(W) <= 1750 && len3(W) > 0,
-          "|v| 2000 -> after 5s %.0f", len3(W));
+    check("D coupled: game's own assist shrinks the drift while rolling",
+          len3(W) <= 1750 && len3(W) > 0 && sim_writes == 0,
+          "|v| 2000 -> after 5s %.0f, writes=%d", len3(W), sim_writes);
     sim_reset(0, 2000, 0); g_decoupled = 1;
     sim_run(1, dt, 1, 0, 1); memcpy(w0, W, sizeof w0);
     sim_run(300, dt, 1, HALF_PI, 1);
@@ -1578,9 +1580,28 @@ int main(void)
     sim_run(180, dt, 0, 0, 1);
     check("F strafe: D builds rightward speed to the limit", fabsf(dot3(W, R[0]) - 140) < 1,
           "sideways after 3s = %.1f", dot3(W, R[0]));
-    sim_keys['D'] = 0; sim_run(240, dt, 0, 0, 1);
-    check("F' coupled: releasing D brings you to a stop", fabsf(dot3(W, R[0])) < 1,
-          "sideways 4s after release = %.2f", dot3(W, R[0]));
+    sim_keys['D'] = 0; sim_writes = 0; sim_run(240, dt, 0, 0, 1);
+    check("F' coupled: releasing D, the sideways speed coasts (no mod braking)",
+          fabsf(dot3(W, R[0]) - 140) < 1 && sim_writes == 0,
+          "sideways 4s after release = %.2f, writes=%d", dot3(W, R[0]), sim_writes);
+
+    /* AC. coupled strafe vs the vanilla flight assist: the assist bleeds off
+     * sideways velocity faster than the strafe thrust (70 m/s^2) builds it, so
+     * at full assist strength coupled strafe can't build sideways speed at all
+     * - it is a gentle push, not free drift. With the decoupled retune the
+     * assist is cut 10x and the same thrust builds to the cap. Accepted
+     * design: users who want more raise LateralAccel/VerticalAccel. */
+    sim_reset(0, 0, 0); sim_steer = 150; sim_keys['D'] = 1;
+    sim_run(180, dt, 0, 0, 1);
+    float ac_held = dot3(W, R[0]);
+    sim_keys['D'] = 0; sim_run(60, dt, 0, 0, 1);
+    check("AC coupled strafe vs full vanilla assist: assist eats the thrust",
+          ac_held < 5 && fabsf(dot3(W, R[0])) < 5,
+          "sideways while held = %.2f (cap 140)", ac_held);
+    sim_reset(0, 0, 0); sim_steer = 15; sim_keys['D'] = 1;
+    sim_run(180, dt, 0, 0, 1);
+    check("AC' decoupled strafe vs cut assist (x0.1): builds to the cap",
+          fabsf(dot3(W, R[0]) - 140) < 1, "sideways after 3s = %.1f", dot3(W, R[0]));
 
     /* G. slow flight: game changes pass through below MomentumMinSpeed */
     sim_reset(20, 0, 0); memcpy(w0, W, sizeof w0); g_decoupled = 1;
@@ -1596,44 +1617,22 @@ int main(void)
           "writes=%d turned %.1f deg", sim_writes, angle_deg(W, w0));
     g_enabled = 1;
 
-    /* I. retro braking rate */
-    sim_reset(300, 0, 0);
-    sim_run(180, dt, 0, 0, 1);
-    float i_mid = dot3(W, R[2]);
-    sim_run(300, dt, 0, 0, 1);
-    check("I coupled: releasing throttle brakes to a stop at retro rate", len3(W) < 1 && fabsf(i_mid - 120) < 3,
-          "fwd after 3s %.1f (expect ~120), after 8s |v|=%.2f", i_mid, len3(W));
-
-    /* I'. braking starts immediately even while the game keeps pushing forward */
-    sim_reset(150, 0, 0); sim_game_accel[2] = 60;     /* game's throttle wind-down still pushing */
-    sim_run(60, dt, 0, 0, 1);
-    check("I' release W: braking starts immediately despite game push", dot3(W, R[2]) < 95 && g_handoff_until == 0,
-          "fwd after 1s = %.1f (expect ~90), hand-off=%d", dot3(W, R[2]), g_handoff_until != 0);
-
     /* J. decoupled coasts */
     sim_reset(300, 0, 0); g_decoupled = 1;
     sim_run(480, dt, 0, 0, 1);
     check("J decoupled: coasts with throttle released", fabsf(len3(W) - 300) < 0.5f, "|v| after 8s = %.1f", len3(W));
 
-    /* K. sliding turn then coupled: nothing converts into forward speed */
+    /* K. sliding turn in decoupled, then couple: the mod stops writing - the
+     * velocity is left to the game, nothing is converted into forward speed */
     sim_reset(0, 300, 0); g_decoupled = 1;
     sim_run(30, dt, 0, 1.5707963f, 1);
     float k_fwd = dot3(W, R[2]);
     sim_keys['Z'] = 1; sim_run(1, dt, 0, 0, 1); sim_keys['Z'] = 0;
-    float peak_fwd = fabsf(dot3(W, R[2]));
-    for (int f = 0; f < 600; f++) { sim_run(1, dt, 0, 0, 1); float a2 = fabsf(dot3(W, R[2])); if (a2 > peak_fwd) peak_fwd = a2; }
-    check("K coupled after sliding turn: no speed transferred forward", len3(W) < 1 && peak_fwd <= fabsf(k_fwd) + 0.5f,
-          "fwd at switch %.1f, peak after %.1f, |v| after 10s %.2f", k_fwd, peak_fwd, len3(W));
-
-    /* S. multi-axis braking keeps its direction and finishes together */
-    sim_reset(50, 100, 0); memcpy(w0, W, sizeof w0);
-    sim_run(18, dt, 0, 0, 1); float s1[3]; memcpy(s1, W, sizeof s1);
-    sim_run(42, dt, 0, 0, 1);
-    float dir_drift = angle_deg(s1, W);
-    float mid_r = dot3(W, R[0]), mid_f = dot3(W, R[2]);
-    sim_run(180, dt, 0, 0, 1);
-    check("S uniform braking: straight-line stop, axes finish together", dir_drift < 1 && fabsf(mid_r / mid_f - 2) < 0.05f && len3(W) < 1,
-          "direction change %.2f deg, sideways:fwd at 1s = %.2f (start 2.00), |v| after 4s %.2f", dir_drift, mid_r / mid_f, len3(W));
+    sim_writes = 0;
+    sim_run(600, dt, 0, 0, 1);
+    check("K coupled after sliding turn: velocity left to the game, no writes",
+          fabsf(dot3(W, R[2]) - k_fwd) < 0.5f && fabsf(len3(W) - 300) < 0.5f && sim_writes == 0,
+          "fwd at switch %.1f -> %.1f, |v|=%.1f, writes=%d", k_fwd, dot3(W, R[2]), len3(W), sim_writes);
 
     /* L. W held: the game's throttle passes through */
     sim_reset(0, 0, 0); sim_keys['W'] = 1; sim_game_accel[2] = 50;
@@ -1673,10 +1672,12 @@ int main(void)
     sim_run(240, dt, 0, 0, 1);
     check("U' holding W at boost speed isn't dragged down", fabsf(len3(W) - 1300) < 2, "|v| 1300 -> %.1f after 4s", len3(W));
     sim_reset(1300, 0, 0);
-    sim_run(1, dt, 0, 0, 1); memcpy(w0, W, sizeof w0); sim_game_accel[2] = -1000;
-    sim_run(240, dt, 0, 0, 1);
-    check("U'' coupled boost release: brakes at retro, heading kept", fabsf(len3(W) - (1300 - 240)) < 5 && angle_deg(W, w0) < 0.5f,
-          "|v| 1300 -> %.1f after 4s (retro 60 -> 1060)", len3(W));
+    sim_run(1, dt, 0, 0, 1); sim_game_accel[2] = -1000;
+    sim_writes = 0;
+    sim_run(36, dt, 0, 0, 1);
+    check("U'' coupled boost release: game's own overspeed brake passes through, mod writes nothing",
+          fabsf(dot3(W, R[2]) - 700) < 5 && sim_writes == 0,
+          "|v| 1300 -> %.1f after 0.6s (game-only 700), writes=%d", dot3(W, R[2]), sim_writes);
 
     /* V. pulse exit: the game's deceleration below pulse speed still happens */
     sim_reset(4500, 0, 0); sim_game_accel[2] = -2000;
@@ -1703,10 +1704,14 @@ int main(void)
     sim_run(120, dt, 0, 1.5707963f, 0);                  /* 180 deg over 2s */
     check("Y decoupled 180deg flip at 1400 m/s: still 1400 the same way", angle_deg(W, w0) < 1 && fabsf(len3(W) - 1400) < 5 && dot3(W, R[2]) < -1390,
           "direction change %.2f deg, |v|=%.1f, along nose %.1f", angle_deg(W, w0), len3(W), dot3(W, R[2]));
-    sim_keys['Z'] = 1; sim_run(1, dt, 0, 0, 0); sim_keys['Z'] = 0;
     sim_game_accel[2] = 0; sim_steer = 0;
+    sim_keys['Z'] = 1; sim_run(1, dt, 0, 0, 0); sim_keys['Z'] = 0;
+    sim_writes = 0;
     sim_run(1800, dt, 0, 0, 0);
-    check("Y' then coupled: brakes to a stop", len3(W) < 1, "|v| 30s after coupling = %.2f", len3(W));
+    check("Y' then coupled: coasts at full speed, mod writes nothing "
+          "(the real game's flight assist would slow it)",
+          fabsf(len3(W) - 1400) < 5 && sim_writes == 0,
+          "|v| 30s after coupling = %.2f, writes=%d", len3(W), sim_writes);
 
     /* Z. log 17:13:20 - travelling backwards, the game's reverse-speed limit pushes
      *    forward along the nose. Must not hand off; speed and heading kept. */
@@ -1804,7 +1809,7 @@ int main(void)
 
         memset(&RT, 0, sizeof RT);
         RT.globals = &glob_c; RT.control = &ctl_c; RT.engine = &eng_c; RT.instance = inst; RT.found = 1;
-        cfg.flight_retune = 1; g_enabled = 1;
+        cfg.flight_retune = 1; g_enabled = 1; g_decoupled = 1;
         SIM_FILL(2.0f);
         int want_n = (int)(2 * N_ENGINE_TUNES + N_GLOBAL_TUNES);
         int ok_expand = retune_expand(0);
@@ -1817,12 +1822,12 @@ int main(void)
             if (strcmp(RT.e[i].label, "ControlCorvette.SpaceEngine.TurnStrength") == 0) {
                 turn_off = RT.e[i].offset; turn_mul = RT.e[i].value; memcpy(&turn, inst + turn_off, 4);
             }
-        check("R' applied on top of the loaded values", sim_retune_bad(2.0f, 1) == 0 &&
+        check("R' applied on top of the loaded values", sim_retune_bad(2.0f, 1, 1) == 0 &&
               turn_off == 0x100 + 0xC0 + 4 * turn_idx && fabsf(turn - 2.0f * turn_mul) < 1e-5f,
-              "%d wrong; ControlCorvette.SpaceEngine.TurnStrength @%#x = %.3f", sim_retune_bad(2.0f, 1), turn_off, turn);
+              "%d wrong; ControlCorvette.SpaceEngine.TurnStrength @%#x = %.3f", sim_retune_bad(2.0f, 1, 1), turn_off, turn);
 
         retune_tick(); retune_tick();
-        check("R'' not applied twice", sim_retune_bad(2.0f, 1) == 0, "%d wrong", sim_retune_bad(2.0f, 1));
+        check("R'' not applied twice", sim_retune_bad(2.0f, 1, 1) == 0, "%d wrong", sim_retune_bad(2.0f, 1, 1));
 
         /* The reload value must not equal anything we wrote (2 x 1.5 = 3 would):
          * a loaded value bit-identical to our last write reads as "already
@@ -1830,26 +1835,45 @@ int main(void)
          * values must not get them twice. */
 
         SIM_FILL(7.0f); retune_tick();
-        check("R''' game reloads its data: applied again on the new values", sim_retune_bad(7.0f, 1) == 0,
-              "%d wrong", sim_retune_bad(7.0f, 1));
+        check("R''' game reloads its data: applied again on the new values", sim_retune_bad(7.0f, 1, 1) == 0,
+              "%d wrong", sim_retune_bad(7.0f, 1, 1));
 
         float other = 5.0f; memcpy(inst + turn_off, &other, 4); retune_tick();
         memcpy(&turn, inst + turn_off, 4);
         check("R4 another mod's value is scaled, the rest left as they are",
-              fabsf(turn - 5.0f * turn_mul) < 1e-5f && sim_retune_bad(7.0f, 1) == 1, "TurnStrength %.3f, others wrong %d",
-              turn, sim_retune_bad(7.0f, 1) - 1);
+              fabsf(turn - 5.0f * turn_mul) < 1e-5f && sim_retune_bad(7.0f, 1, 1) == 1, "TurnStrength %.3f, others wrong %d",
+              turn, sim_retune_bad(7.0f, 1, 1) - 1);
 
         SIM_FILL(7.0f); retune_tick();
         cfg.flight_retune = 0; retune_tick();
-        int off_bad = sim_retune_bad(7.0f, 0);
+        int off_bad = sim_retune_bad(7.0f, 0, 0);
         cfg.flight_retune = 1; retune_tick();
-        int on_bad = sim_retune_bad(7.0f, 1);
+        int on_bad = sim_retune_bad(7.0f, 1, 1);
         g_enabled = 0; retune_tick();
-        int f8_bad = sim_retune_bad(7.0f, 0);
+        int f8_bad = sim_retune_bad(7.0f, 0, 0);
         g_enabled = 1; retune_tick();
         check("R5 FlightRetune=0 and F8 put the loaded values back, and on again",
-              off_bad == 0 && on_bad == 0 && f8_bad == 0 && sim_retune_bad(7.0f, 1) == 0,
+              off_bad == 0 && on_bad == 0 && f8_bad == 0 && sim_retune_bad(7.0f, 1, 1) == 0,
               "off %d, on %d, F8 %d wrong", off_bad, on_bad, f8_bad);
+
+        /* R6: mode toggle WITH the retune on - decoupled-scope entries follow
+         * the mode (restored to the loaded values in coupled), always-scope
+         * entries stay applied in both. */
+        g_decoupled = 0; retune_tick();
+        float minspd = 0, ts2 = 0; int minspd_off = -1, ts2_off = -1;
+        for (int i = 0; i < RT.n; i++) {
+            if (strcmp(RT.e[i].label, "Control.SpaceEngine.MinSpeed") == 0)
+                { minspd_off = RT.e[i].offset; memcpy(&minspd, inst + minspd_off, 4); }
+            if (strcmp(RT.e[i].label, "Control.SpaceEngine.TurnStrength") == 0)
+                { ts2_off = RT.e[i].offset; memcpy(&ts2, inst + ts2_off, 4); }
+        }
+        check("R6 coupled with retune on: always-scope applied, decoupled-scope restored",
+              sim_retune_bad(7.0f, 1, 0) == 0 && minspd_off >= 0 && ts2_off >= 0 &&
+              fabsf(minspd) < 1e-6f && fabsf(ts2 - 7.0f) < 1e-6f,
+              "%d wrong; MinSpeed=%.3f TurnStrength=%.3f", sim_retune_bad(7.0f, 1, 0), minspd, ts2);
+        g_decoupled = 1; retune_tick();
+        check("R6' back to decoupled: everything applied again", sim_retune_bad(7.0f, 1, 1) == 0,
+              "%d wrong", sim_retune_bad(7.0f, 1, 1));
 #undef SIM_FILL
         memset(&RT, 0, sizeof RT);
         cfg.flight_retune = 0;

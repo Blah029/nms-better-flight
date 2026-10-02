@@ -1,7 +1,12 @@
 # Better Flight — No Man's Sky
 
-Star Citizen-style flight for No Man's Sky: real strafing, momentum, the ability
-to stop, and no forced banking.
+Two flight modes for No Man's Sky:
+
+- **Coupled** (default) — the game's own flight model, exactly as vanilla: turns,
+  banking, braking, minimum speed. The only additions are strafe and up/down
+  thrusters on top of it.
+- **Decoupled** — Star Citizen-style 6DOF: real strafing, momentum, the ability
+  to stop, and no forced banking.
 
 Windows and Linux (Proton) — same files. See [RESEARCH.md](RESEARCH.md) for the
 technical background.
@@ -41,11 +46,14 @@ option is required**. If you prefer a launch option instead:
 
 Bold = new. Everything else on the ship keyboard map is unchanged.
 
-**Coupled** (default at launch): every axis you aren't commanding is braked toward
-zero as one vector, so releasing the throttle stops the ship along its direction of
-travel. **Decoupled**: no braking — velocity is world-fixed through turns and flips.
-Above `MomentumMinSpeed` the game's own velocity changes on uncommanded axes are
-discarded; below it, and during pulse/landing/follow hand-offs, the game flies.
+**Coupled** (default at launch): the game's flight model runs as in vanilla —
+releasing the throttle coasts at the game's own rate, turns bank the ship, and the
+flight assist bleeds off sideways velocity. The strafe keys are the only thing
+added on top (they push against the assist, so they're a gentle push; raise
+`LateralAccel` / `VerticalAccel` for more). **Decoupled**: no braking — velocity is
+world-fixed through turns and flips. Above `MomentumMinSpeed` the game's own
+velocity changes on uncommanded axes are discarded; below it, and during
+pulse/landing/follow hand-offs, the game flies.
 
 Any action takes several inputs, mouse buttons included:
 `StrafeLeft = KeyA, Mouse4`, `Ship_RollLeft = KeyQ, Mouse4`.
@@ -69,19 +77,20 @@ with the game running.
 | `LateralAccel` | 70 | strafe thruster, m/s² |
 | `VerticalAccel` | 55 | up/down thruster, m/s² |
 | `MaxStrafeSpeed` | 140 | strafe won't push that axis past this |
-| `RetroAccel` / `MainAccel` | 60 / 120 | coupled braking of forward / backward motion, m/s² |
-| `ThrustKey` / `BrakeKey` / `BoostKey` | W / S / LShift | the game's throttle keys, as coupled mode sees them |
+| `ThrustKey` / `BrakeKey` / `BoostKey` | W / S / LShift | the game's throttle keys, as the mod sees them |
 | `AutopilotKeys` / `AutopilotSeconds` | N, B, F / 6 | keys that hand control to the game, and for how long |
-| `WorldMomentum` / `MomentumMinSpeed` | 1 / 30 | discard the game's velocity changes on uncommanded axes above this speed |
+| `WorldMomentum` / `MomentumMinSpeed` | 1 / 30 | (decoupled only) discard the game's velocity changes on uncommanded axes above this speed |
 | `DriftSpeedCap` | 3500 | safety cap on sideways + vertical speed |
-| `FlightRetune` | 1 | apply the flight retune on top of the loaded flight data (0 restores the loaded values) |
+| `FlightRetune` | 1 | (decoupled only) apply the flight retune on top of the loaded flight data; space min-speed is 0 in both modes (0 restores the loaded values) |
 | `InvertLateral` / `InvertVertical` | 0 | flip if a direction is backwards |
 | `Debug` | 1 | per-second flight telemetry in `BetterFlight.log` |
 
-The rest of the feel — momentum, stopping, roll coupling — is the flight retune. Its
-tables live in `build_mod.py` (`SPACE` / `ATMOS` / `GLOBAL_TUNING`). `native/build.sh`
-generates `native/src/flight_tuning.inc` from them, and the DLL applies them in memory
-(RESEARCH.md §16). Changing a table needs a rebuild; `FlightRetune` works live.
+The rest of the feel in decoupled mode — momentum, stopping, roll coupling — is the
+flight retune. Its tables live in `build_mod.py`: `ALWAYS_ENGINE_TUNING` (space
+min-speed 0, applied in both modes) and `SPACE` / `ATMOS` / `GLOBAL_TUNING`
+(decoupled mode only). `native/build.sh` generates `native/src/flight_tuning.inc`
+from them, and the DLL applies them in memory (RESEARCH.md §16, §17). Changing a
+table needs a rebuild; `FlightRetune` works live.
 
 ---
 
@@ -91,7 +100,7 @@ Built from this repo:
 
 | Piece | Type | Does |
 |---|---|---|
-| flight retune | in `winmm.dll` | 176 flight values (no yaw→roll coupling, the ship can stop, flight assist cut so momentum exists), found by name via the game's reflection metadata and applied in memory on top of whatever the game loaded, so ship-globals mods such as PTSd still work |
+| flight retune | in `winmm.dll` | 176 flight values — 24 in both modes (space min-speed 0), 152 decoupled-mode only (no yaw→roll coupling, the ship can stop, flight assist cut so momentum exists) — found by name via the game's reflection metadata and applied in memory on top of whatever the game loaded, so ship-globals mods such as PTSd still work |
 | `BetterFlightControls` | data mod | Moves vanilla roll / pulse / land / exit off the keys strafe needs |
 | `winmm.dll` | native mod | Adds strafe. Post-hooks `cGcSpaceshipComponent::UpdateControlled`; each frame reads ship velocity, adds thruster Δv along the ship's own right/up axes, writes it back |
 

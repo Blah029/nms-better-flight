@@ -3,7 +3,7 @@
 
 [size=4]Strafe. Thrust up and down. Keep your momentum through a 180 and fly backwards at full speed.[/size]
 
-[b]Not just a speed tweak or a handling retune.[/b] Real thrust on three axes the game never had, with a Star Citizen-style coupled / decoupled switch.[/center]
+[b]Not just a speed tweak or a handling retune.[/b] Real thrust on three axes the game never had, with a coupled / decoupled switch: vanilla handling plus strafe, or full Star Citizen-style 6DOF.[/center]
 
 Every ship in No Man's Sky flies where its nose points. You can't slide sideways, you can't lift straight up, and you can never truly stop.
 
@@ -21,9 +21,9 @@ Better Flight adds the three directions the game never had - left/right, up/down
 [/list]
 
 [size=5][b]Coupled and decoupled[/b][/size]
-[b]Coupled[/b] (default every launch) - release the throttle and strafe keys and the ship brakes to a full stop in every direction. No sideways sliding when you turn.
+[b]Coupled[/b] (default every launch) - the game's own flight model, exactly as vanilla: turns, banking, braking, minimum speed. The only additions are the strafe and up/down thrusters; the game's flight assist works against them, so coupled strafe is a gentle push (raise [i]LateralAccel[/i] / [i]VerticalAccel[/i] for more).
 
-[b]Decoupled[/b] - nothing slows you down. Boost to top speed, let go, flip the ship around and keep flying backwards at full speed. Press [b]Z[/b] again and the ship brakes to a stop.
+[b]Decoupled[/b] - full 6DOF: nothing slows you down. Boost to top speed, let go, flip the ship around and keep flying backwards at full speed.
 
 Below about 30 m/s the game's normal flight takes over, so landing, take-off and hovering work as usual. Pulse jump, landing and auto-follow are left to the game automatically. Walking around a corvette or on a spacewalk, the mod leaves the ship alone.
 
@@ -47,7 +47,7 @@ On a spacewalk, roll is [b]Shift + Q / Shift + E[/b] - the game's own control, n
 [*]Extract the zip into your [i]No Man's Sky[/i] folder (the one containing [i]Binaries[/i] and [i]GAMEDATA[/i]), merging folders and overwriting files.
 [*]Launch normally.
 [/list]
-[b]Updating from 1.1.1 or earlier:[/b] extract over the old version, then [b]delete GAMEDATA/MODS/BetterFlight[/b] - the flight retune is built into the DLL now.
+[b]Updating from 1.2.x or earlier:[/b] extract over the old version, then [b]delete GAMEDATA/MODS/BetterFlight[/b] if it exists - the flight retune is built into the DLL now. (1.3.0: coupled mode is vanilla flight plus strafe; it no longer brakes the ship to a stop.)
 Manual install is recommended - part of the mod goes in [i]Binaries[/i], which mod managers don't always handle.
 
 [b]Linux / Steam Deck[/b]
@@ -74,11 +74,10 @@ Edit [i]Binaries/BetterFlight.ini[/i] - even with the game running; changes appl
 [*][b]ToggleKey[/b] (F8) - all mod features on / off
 [*][b]LateralAccel / VerticalAccel[/b] (70 / 55) - strafe thruster strength
 [*][b]MaxStrafeSpeed[/b] (140) - strafe won't push past this speed
-[*][b]RetroAccel / MainAccel[/b] (60 / 120) - how hard coupled mode brakes forward / backward motion
-[*][b]ThrustKey / BrakeKey / BoostKey[/b] (W / S / LShift) - your throttle keys, used by coupled mode
+[*][b]ThrustKey / BrakeKey / BoostKey[/b] (W / S / LShift) - your throttle keys, as the mod sees them
 [*][b]AutopilotKeys[/b] (N, B, F) - keys that hand control to the game
-[*][b]WorldMomentum[/b] (1) - 0 = the game's own momentum handling
-[*][b]FlightRetune[/b] (1) - 0 = the game's own handling tuning (F8 also toggles it)
+[*][b]WorldMomentum[/b] (1) - (decoupled only) 0 = the game's own momentum handling
+[*][b]FlightRetune[/b] (1) - (decoupled only) 0 = the game's own handling tuning (F8 also toggles it)
 [*][b]InvertLateral / InvertVertical[/b] (0) - flip a direction
 [/list]
 [b]Mouse buttons and multiple keys:[/b] separate inputs with commas, using Mouse1 to Mouse5:
