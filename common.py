@@ -18,6 +18,7 @@ DL     = "https://github.com/monkeyman192/MBINCompiler/releases/download"
 
 def env():
     return dict(os.environ, DOTNET_ROOT=str(DOTNET),
+                DOTNET_SYSTEM_GLOBALIZATION_INVARIANT="1",
                 PATH=f"{DOTNET}:{os.environ['PATH']}")
 
 
@@ -29,6 +30,9 @@ def run(cmd, **kw):
 # --------------------------------------------------------------- game discovery
 def steam_libraries():
     libs = []
+    override = os.environ.get("NMS_STEAM_LIB")
+    if override:
+        libs.append(Path(override))
     for base in (Path.home()/".steam/steam", Path.home()/".local/share/Steam"):
         vdf = base/"steamapps"/"libraryfolders.vdf"
         if vdf.exists():
