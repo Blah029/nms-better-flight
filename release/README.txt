@@ -169,6 +169,9 @@ being pulled toward the nose.
 -------------------------------------------------------------------------------
   - Keyboard and mouse only: controllers and HOTAS can't strafe or switch
     modes yet.
+  - Multiplayer: 1.2.1 stops ships interfering with each other, and is still
+    being tested. If anything odd happens near other players, set Debug = 1
+    and send Binaries/BetterFlight.log with your report.
   - No on-screen coupled/decoupled indicator.
   - Typing A, D, Space or Z in text chat while flying also strafes or
     switches mode.
@@ -188,6 +191,10 @@ being pulled toward the nose.
  to the keys you actually use.
  A/D still roll: the flight-controls folder didn't install, or your custom
  keybinds are overriding it (see above).
+ A/D suddenly roll after a game update or crash: No Man's Sky switches ALL
+ mods off after a crash, often caused by another mod that is out of date. Open
+ Binaries/SETTINGS/GCMODSETTINGS.MXML, set DisableAllMods to false, and remove
+ or update the mod that crashed.
  Log says the old data mod is still installed: delete
  GAMEDATA/MODS/BetterFlight.
 
