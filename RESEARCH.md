@@ -1179,7 +1179,7 @@ The per-entry restore machinery of §16 does the mode switching: an entry whose
 coupled restores the 128 decoupled-scope values and back to decoupled
 re-applies them on top — no separate restore table.
 
-**The strafe-conversion bug (fixed 1.3.1).** With the 1.3.0 scope split,
+**The strafe-conversion bug (fixed 1.3.1 + 1.3.2).** With the 1.3.0 scope split,
 coupled strafe in space gained forward/backwards speed (reported on a
 corvette; absent on planets, absent in decoupled, absent with
 `FlightRetune = 0`). Live `Debug = 1` logs settled it: the mod writes only
@@ -1201,6 +1201,40 @@ change each frame — the right/up change passes through, so the vanilla bleed
 of the drift (the accepted "gentle push") keeps running. Hover/landing is
 excluded by the drift requirement (nose-axis lift with ~no drift) and the
 existing hand-off gates.
+
+**The release phase (fixed 1.3.2).** The same steering converts the
+*residual* drift after the key is released — 1.3.1's gate only armed while a
+strafe key was held, so a release kicked the ship forward (or backwards, on
+the PID overshoot). The fix keeps the cancellation armed for 5 s after the
+last strafe frame (`g_strafe_window`), disarming early once the drift bleeds
+below 5 m/s (the direct lateral bleed is ≈ 1.4·v from the live
+thrust-vs-plateau numbers, so the drift is gone in ~2–3 s). Two details:
+the window is anchored to strafe *activity*, so a vanilla slide turn (off-nose
+velocity, no recent strafe) still gets the game's nose alignment; and the
+take-off/landing hand-off rule (low speed + side push > 20 m/s²) is suspended
+for the window, because as the drift decays below 30 m/s that rule would fire
+on the drift bleed itself and re-arm the conversion with ~30 m/s still to go.
+Game-event exposure is nil in practice: station/outpost approaches end in the
+N/B hand-off keys, impacts hand off, and any W/S/boost input disarms the gate;
+the only theoretical case (hands-off atmospheric entry seconds after a
+strafe, drifting > 5 m/s) delays drag by at most the window length — the same
+exposure the 1.3.1 hold behaviour already had while the key was down.
+
+**The mode-switch case (fixed 1.3.3).** The same bug class has a third entry
+point: decoupled momentum flight can leave the ship drifting sideways at
+near-max speed with the nose 90° off (a state that cannot exist in vanilla —
+the game continuously steers velocity toward the nose, so vanilla off-nose
+velocities are tens of m/s, not 1600). Switching to coupled handed that state
+to the vanilla model, whose brake/steer terms scale with speed: the live log
+shows 1629 m/s sideways collapsing to 448 m/s in one second (~1200 m/s² of
+lateral brake, ~440 m/s² nose push driving −197 m/s of backwards velocity)
+with the mod fully passive (0 discarded, 0 writes). The fix arms the same
+`g_strafe_window` at the decouple-key edge when drift > 5 m/s
+(`g_switch_to_coupled` one-frame flag, consumed where the ship axes are
+known): the nose-axis conversion is cancelled, the lateral drift bleeds at
+the game's own rate (~1.3 s in the live case). The lateral collapse is not
+and should not be fixed — it is the vanilla `DirectionBrake` eating an
+artificial state; staying decoupled keeps the drift.
 
 ---
 

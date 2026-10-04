@@ -25,7 +25,7 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.3.1"
+#define BF_VERSION "1.3.3"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
@@ -571,6 +571,7 @@ static int resolve(int verbose)
 static int g_enabled = 1;       /* ToggleKey: every native flight feature on/off */
 static int g_decoupled = 0;     /* DecoupleKey */
 static int g_toggle_was_down, g_decouple_was_down;
+static int g_switch_to_coupled;   /* one-frame flag: decouple key switched us to coupled */
 static int g_piloted = 1;       /* last pilot-check result, for logging transitions */
 #ifdef BF_SIMTEST
 static double sim_ms;                           /* simulated clock */
@@ -580,6 +581,7 @@ static ULONGLONG bf_ticks(void) { return GetTickCount64(); }
 #endif
 static ULONGLONG g_hard_until;                  /* hand-off not cancelled by pilot input (impact, pulse exit) */
 static ULONGLONG g_handoff_until;   /* coupled mode stands down while the game drives the ship */
+static ULONGLONG g_strafe_window;   /* strafe-release window active until this tick */
 static ULONGLONG g_next_ini_check, g_next_diag, g_next_warn;
 static unsigned g_skipped;
 static float g_last_ix = 0, g_last_iy = 0;
@@ -1044,6 +1046,7 @@ static void flight_tick(void *ship, float dt)
         int d = down_set(&cfg.decouple);
         if (d && !g_decouple_was_down) {
             g_decoupled = !g_decoupled;
+            if (!g_decoupled) g_switch_to_coupled = 1;
             logmsg("flight mode: %s", g_decoupled ? "DECOUPLED" : "COUPLED");
         }
         g_decouple_was_down = d;
@@ -1102,6 +1105,11 @@ static void flight_tick(void *ship, float dt)
     float sx = cfg.invert_lateral  ? -ix : ix;
     float sy = cfg.invert_vertical ? -iy : iy;
     int piloting = sx != 0 || sy != 0 || fwd_in;
+    if (sx != 0 || sy != 0) g_strafe_window = now + 5000;
+    /* ^ release window (1.3.2): the game converts residual drift into forward
+     * speed for a few seconds AFTER the strafe key is released, so the
+     * nose-axis cancellation below stays armed until 5 s after the last
+     * strafe frame. The drift bleeds off in ~2-3 s, well inside the window. */
 
     /* Pulse drive: hands off while above pulse speed and for a while after, so the
      * game's pulse-exit deceleration happens even if the pilot is holding W. */
@@ -1147,8 +1155,11 @@ static void flight_tick(void *ship, float dt)
              * limit both push along the nose too, but never raise total speed -
              * so manoeuvring at speed can't be mistaken for pulse drive. */
             why = "pulse spool-up";
-        } else if (slow && ((sx == 0 && pr > lo) || (sy == 0 && pu > lo))) {
-            /* take-off lifts vertically; low-speed forward pushes are just the throttle */
+        } else if (slow && now >= g_strafe_window &&
+                    ((sx == 0 && pr > lo) || (sy == 0 && pu > lo))) {
+            /* take-off lifts vertically; low-speed forward pushes are just the
+             * throttle. Not while the strafe-release window is armed: there the
+             * low-speed side push is the known drift bleed, not take-off/landing. */
             why = "low-speed push - take-off / landing";
         }
         if (why) {
@@ -1166,18 +1177,38 @@ static void flight_tick(void *ship, float dt)
 
     int changed = 0;
 
+    /* 1.3.3: switching to coupled with large off-nose velocity (from
+     * decoupled momentum flight) hands the ship to the game, which converts
+     * the drift into forward/backwards velocity - at 1600 m/s sideways the
+     * live game applied ~1200 m/s^2 of brake and a ~440 m/s^2 nose push. Arm
+     * the release window so the nose-axis part is cancelled; the drift
+     * bleeds off at the game's own (vanilla) rate. */
+    if (g_switch_to_coupled) {
+        g_switch_to_coupled = 0;
+        float smvr = dot3(M.v, right), smvu = dot3(M.v, up);
+        if (smvr * smvr + smvu * smvu > 25.0f) {
+            g_strafe_window = now + 5000;
+            if (cfg.debug)
+                logmsg("coupled with %.0f m/s off-nose drift - arming release window",
+                       sqrtf(smvr * smvr + smvu * smvu));
+        }
+    }
+
     /* 1. Momentum.
      * Decoupled: above MomentumMinSpeed, whatever the game did to the velocity
      * on an axis the pilot isn't commanding is discarded - its steering toward
      * the nose, drift pull, throttle wind-down. The velocity stays fixed in
      * space no matter HOW the game would have bent it. W/S/boost still pass the
      * game's throttle through along the nose.
-     * Coupled while strafing: the game's flight model converts sustained
-     * sideways/vertical drift into forward/backwards velocity - it steers the
-     * velocity vector toward the nose (live logs: a pure strafe in space drew
-     * up to ~30 m/s^2 of nose-axis push from the game). Cancel only that
-     * nose-axis change: the game's own bleed of the drift keeps running (the
-     * vanilla "gentle push" feel), and the drift stays sideways. The real-drift
+     * Coupled while strafing, and for 5 s after the last strafe frame: the
+     * game's flight model converts sustained sideways/vertical drift into
+     * forward/backwards velocity - it steers the velocity vector toward the
+     * nose (live logs: a pure strafe in space drew up to ~30 m/s^2 of
+     * nose-axis push from the game). Cancel only that nose-axis change: the
+     * game's own bleed of the drift keeps running (the vanilla "gentle push"
+     * feel), and the drift stays sideways. The release window covers the
+     * residual drift after key release; the strafe-activity requirement keeps
+     * vanilla slide-turn recovery (no recent strafe) untouched. The real-drift
      * requirement leaves hover/landing alone (nose-axis lift with ~no drift);
      * hand-off already covers autopilot, pulse drive, impacts, take-off.
      * In coupled mode otherwise the game's flight model (steering, braking,
@@ -1185,8 +1216,8 @@ static void flight_tick(void *ship, float dt)
     if (!resync && !handoff) {
         int decon = g_decoupled && cfg.world_momentum && len3(M.v) > cfg.momentum_min_speed;
         float mvr = dot3(M.v, right), mvu = dot3(M.v, up);
-        int strafe_conv = !g_decoupled && (sx != 0 || sy != 0) && !fwd_in &&
-                          mvr * mvr + mvu * mvu > 25.0f;
+        int strafe_conv = !g_decoupled && !fwd_in &&
+                          mvr * mvr + mvu * mvu > 25.0f && now < g_strafe_window;
         if (decon || strafe_conv) {
             /* Each keep_* is the part of the game's change along that axis we
              * add back on top of our last write (a velocity delta, not a factor). */
@@ -1209,8 +1240,8 @@ static void flight_tick(void *ship, float dt)
                 dropped[i] = v[i] - nv;
                 v[i] = nv;
             }
-            D.discarded += len3(dropped);
-            changed = 1;
+            float dl = len3(dropped);
+            if (dl > 1e-6f) { D.discarded += dl; changed = 1; }
         }
     }
 
@@ -1426,6 +1457,7 @@ static void sim_reset(float v_at, float v_right, float v_up)
     memset(&M, 0, sizeof M); memset(&D, 0, sizeof D); memset(sim_keys, 0, sizeof sim_keys);
     memset(sim_game_accel, 0, sizeof sim_game_accel); sim_steer = 0; sim_reverse_brake = 0; sim_swing = 0;
     g_decoupled = 0; g_enabled = 1; sim_writes = 0; g_handoff_until = 0; g_hard_until = 0;
+    g_strafe_window = 0; g_switch_to_coupled = 0;
 }
 
 /* rotate the ship: axis 0 = yaw (about up), 1 = roll (about at) */
@@ -1650,6 +1682,50 @@ int main(void)
     check("S'' coupled strafe + vertical lift: lift not cancelled",
           dot3(W, R[1]) > 20, "up after 2s = %.1f", dot3(W, R[1]));
     sim_keys['D'] = 0; sim_game_accel[1] = 0;
+    /* S3. the 1.3.1 bug: releasing the strafe key leaves residual drift that
+     * the game then converts into forward speed. The cancellation stays armed
+     * 5 s after the last strafe frame, so the drift bleeds off sideways and no
+     * forward kick is gained. */
+    sim_reset(0, 30, 0); sim_swing = 40; sim_steer = 25; sim_keys['D'] = 1;
+    sim_run(90, dt, 0, 0, 0);              /* 1.5s holding: drift builds */
+    sim_keys['D'] = 0;                     /* release; the game keeps converting */
+    sim_run(300, dt, 0, 0, 0);             /* 5s coasting */
+    check("S3 release: residual drift bleeds off, no forward kick",
+          fabsf(dot3(W, R[2])) < 6 && dot3(W, R[0]) < 10,
+          "side=%.1f fwd=%.1f after 5s coast", dot3(W, R[0]), dot3(W, R[2]));
+    sim_swing = 0; sim_steer = 0;
+    /* S4. no strafe: a sliding turn leaves off-nose velocity, and the game
+     * steering it back to the nose is vanilla feel - the release window only
+     * arms from strafe activity, so the mod must not interfere. */
+    sim_reset(150, 150, 0); sim_swing = 40; sim_writes = 0;
+    sim_run(180, dt, 0, 0, 0);
+    check("S4 slide turn, no strafe: game aligns velocity to nose, no writes",
+          dot3(W, R[2]) > 180 && sim_writes == 0,
+          "fwd=%.1f writes=%d", dot3(W, R[2]), sim_writes);
+    sim_swing = 0;
+    /* S5. the 1.3.3 case: decoupled momentum flight leaves large off-nose
+     * velocity; switching to coupled (via the decouple key) arms the release
+     * window, so the game's nose-axis conversion is cancelled and the drift
+     * bleeds off at the game's own rate (sim_steer models the direct bleed). */
+    sim_reset(0, 1600, 0); g_decoupled = 1;
+    sim_run(30, dt, 0, 0, 0);             /* establish decoupled state */
+    sim_swing = 40; sim_steer = 400;
+    sim_keys[0x5A] = 1; sim_run(1, dt, 0, 0, 0); sim_keys[0x5A] = 0;  /* switch */
+    sim_run(299, dt, 0, 0, 0);            /* 5s in coupled */
+    check("S5 coupled switch with 1600 m/s sideways: no nose kick, drift bleeds",
+          fabsf(dot3(W, R[2])) < 20 && dot3(W, R[0]) < 50,
+          "side=%.1f fwd=%.1f after 5s", dot3(W, R[0]), dot3(W, R[2]));
+    sim_swing = 0; sim_steer = 0;
+    /* S6. switch to coupled with no off-nose drift: nothing arms, vanilla */
+    sim_reset(300, 0, 0); g_decoupled = 1;
+    sim_run(30, dt, 0, 0, 0);
+    sim_swing = 40;
+    sim_keys[0x5A] = 1; sim_run(1, dt, 0, 0, 0); sim_keys[0x5A] = 0;  /* switch */
+    sim_writes = 0;
+    sim_run(180, dt, 0, 0, 0);
+    check("S6 coupled switch, no drift: vanilla, no writes",
+          sim_writes == 0, "writes=%d", sim_writes);
+    sim_swing = 0;
 
     /* G. slow flight: game changes pass through below MomentumMinSpeed */
     sim_reset(20, 0, 0); memcpy(w0, W, sizeof w0); g_decoupled = 1;

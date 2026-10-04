@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.3.3 — 2026-10-05
+
+- **Fix: switching to coupled with large off-nose velocity no longer kicks
+  the ship forward/backwards.** Decoupled momentum flight can leave the ship
+  drifting sideways at near-max speed with the nose 90° off; handing that
+  state to the vanilla flight model made it react violently (live log:
+  1629 m/s sideways → 448 m/s in one second, ~1200 m/s² of lateral brake and
+  a ~440 m/s² nose push driving −197 m/s of backwards velocity). The decouple
+  key now arms the same 5 s release window used for strafe release when the
+  switch happens with > 5 m/s of off-nose drift: the game's nose-axis change
+  is cancelled, and the drift bleeds off at the game's own (vanilla) rate —
+  in the live case that was ~1.3 s. The lateral collapse itself is the
+  vanilla `DirectionBrake` acting on a state that can't exist without the
+  mod; staying decoupled keeps the drift. Switches with ≤ 5 m/s of drift, any
+  throttle input, and all hand-off cases are unchanged.
+- Simulator: new S5 (coupled switch with 1600 m/s sideways) and S6 (coupled
+  switch, no drift) tests.
+
+## 1.3.2 — 2026-10-04
+
+- **Fix: releasing a coupled strafe in space no longer kicks the ship
+  forward/backwards.** The game's velocity-toward-nose steering keeps
+  converting the *residual* drift into forward speed after the key is
+  released; 1.3.1 only cancelled it while the key was held. The nose-axis
+  cancellation now stays armed for 5 s after the last strafe frame (it
+  disarms early as soon as the drift bleeds below 5 m/s — the drift is gone in
+  ~2–3 s), so a release lets the drift die sideways with no forward kick. The
+  window is anchored to strafe activity, so vanilla slide-turn recovery (no
+  recent strafe) is untouched, and the take-off/landing hand-off rule is
+  suspended only for the window (there the low-speed side push is the known
+  drift bleed, not the game driving the ship). No new exposure to game events:
+  station/outpost approaches end in the N/B hand-off keys, impacts hand off,
+  and any throttle input disarms the gate.
+- Simulator: new S3 (release kick) and S4 (slide-turn protection) tests.
+
 ## 1.3.1 — 2026-10-04
 
 - **Fix: coupled strafe in space no longer gains forward/backwards speed.**
