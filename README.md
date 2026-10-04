@@ -100,7 +100,7 @@ Built from this repo:
 
 | Piece | Type | Does |
 |---|---|---|
-| flight retune | in `winmm.dll` | 176 flight values — 24 in both modes (space min-speed 0), 152 decoupled-mode only (no yaw→roll coupling, the ship can stop, flight assist cut so momentum exists) — found by name via the game's reflection metadata and applied in memory on top of whatever the game loaded, so ship-globals mods such as PTSd still work |
+| flight retune | in `winmm.dll` | 152 flight values — 24 in both modes (space min-speed 0), 128 decoupled-mode only (no yaw→roll coupling, the ship can stop, flight assist cut so momentum exists) — found by name via the game's reflection metadata and applied in memory on top of whatever the game loaded, so ship-globals mods such as PTSd still work |
 | `BetterFlightControls` | data mod | Moves vanilla roll / pulse / land / exit off the keys strafe needs |
 | `winmm.dll` | native mod | Adds strafe. Post-hooks `cGcSpaceshipComponent::UpdateControlled`; each frame reads ship velocity, adds thruster Δv along the ship's own right/up axes, writes it back |
 

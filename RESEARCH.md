@@ -1165,7 +1165,8 @@ tunable in `BetterFlight.ini` for users who want more. The simulator covers
 both ends (AC / AC'): at full assist strength the 70 m/s² default thrust
 builds no sideways speed at all; at the ×0.1 cut it builds to the cap.
 
-**Scope split (1.3.0).** The 176 retune values now carry a scope:
+**Scope split (1.3.0).** The 152 retune values (24 always + 128 decoupled;
+176 was the 1.2.x total) now carry a scope:
 
 | Scope | Values | Applied |
 |---|---|---|
@@ -1175,8 +1176,31 @@ builds no sideways speed at all; at the ×0.1 cut it builds to the cap.
 
 The per-entry restore machinery of §16 does the mode switching: an entry whose
 `want` goes false writes its remembered loaded value back, so toggling to
-coupled restores 152 values and back to decoupled re-applies them on top —
-no separate restore table.
+coupled restores the 128 decoupled-scope values and back to decoupled
+re-applies them on top — no separate restore table.
+
+**The strafe-conversion bug (fixed 1.3.1).** With the 1.3.0 scope split,
+coupled strafe in space gained forward/backwards speed (reported on a
+corvette; absent on planets, absent in decoupled, absent with
+`FlightRetune = 0`). Live `Debug = 1` logs settled it: the mod writes only
+along the ship's right/up axes, yet a pure lateral strafe showed the *game*
+applying up to ~30 m/s² along the nose while the forward component climbed
+to ~78 m/s before decaying — the game's flight model steers the **velocity
+vector** toward the nose in response to sustained off-nose velocity (a
+Follow-style controller: the rise–overshoot–decay shape and the
+forward-*or*-backwards sign flip are its PID chatter, not ship rotation). Why
+only 1.3.0 coupled: 1.2.x coupled braked the uncommanded forward axis to
+zero every frame (killing the conversion); 1.2/1.3 decoupled discards the
+same nose-axis push via the momentum discard; planets never showed it
+(atmospheric flight model dominates; the corvette's low atmospheric
+min-speed means any residual is imperceptible); `FlightRetune = 0` only
+restores the always-scope min-speeds, leaving the steering in place. The fix
+is in `flight_tick()` §1: while coupled and strafing without forward input,
+with real drift (> 5 m/s), the mod cancels only the game's nose-axis velocity
+change each frame — the right/up change passes through, so the vanilla bleed
+of the drift (the accepted "gentle push") keeps running. Hover/landing is
+excluded by the drift requirement (nose-axis lift with ~no drift) and the
+existing hand-off gates.
 
 ---
 

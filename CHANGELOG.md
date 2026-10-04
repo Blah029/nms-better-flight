@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.1 — 2026-10-04
+
+- **Fix: coupled strafe in space no longer gains forward/backwards speed.**
+  The game's flight model steers the velocity vector toward the nose in
+  response to sustained sideways/vertical drift (live logs: a pure strafe in
+  space drew up to ~30 m/s² of nose-axis push from the game, with the
+  controller's overshoot producing forward *and* backwards phases). 1.2.x's
+  coupled mode masked this by braking the uncommanded forward axis to zero
+  every frame; 1.3.0's coupled mode (no mod braking, no momentum discard)
+  let the conversion run unchecked. While coupled and strafing without
+  forward input, the mod now cancels only the game's nose-axis velocity
+  change: the drift builds and bleeds exactly as before (the "gentle push"
+  feel is unchanged) and it stays sideways. It needs real drift (> 5 m/s), so
+  hover/landing lift (nose-axis push, ~no drift) is untouched, and hand-off
+  (autopilot, pulse drive, impacts, take-off) is unchanged. The bug was
+  space-only in testing (corvette, in both retune states) and never affected
+  decoupled mode — its momentum discard already cancels the same push.
+- Docs: corrected the retune count — 1.3.0's table is 152 values (24
+  always-scope + 128 decoupled-scope); 176 was the 1.2.x total.
+- Simulator: new S / S' / S'' tests cover the conversion, a straight nose-axis
+  push while strafing, and the lift safety case.
+
 ## 1.3.0 — 2026-10-02
 
 - **Coupled mode is now vanilla flight plus strafe.** The mod's own coupled
@@ -9,10 +31,11 @@
   strafe / up-down thrust. The game's flight assist works against it, so
   coupled strafe is a gentle push; raise `LateralAccel` / `VerticalAccel` in
   `BetterFlight.ini` (re-read live) for more.
-- **The flight retune is now decoupled-mode only** (152 of its 176 values).
-  Toggling to coupled restores the game's loaded values for those fields;
-  toggling back re-applies them on top. `FlightRetune = 0` leaves the flight
-  data untouched in both modes.
+- **The flight retune is now split by scope**: 24 values (space
+  `MinSpeed` / `MinSpeedForce`) apply in both modes, the other 128 apply in
+  decoupled mode only. Toggling to coupled restores the game's loaded values
+  for those 128 fields; toggling back re-applies them on top.
+  `FlightRetune = 0` leaves the flight data untouched in both modes.
 - **Space minimum speed is 0 in both modes** (`MinSpeed` / `MinSpeedForce` on
   the space engines, 24 values, applied always) — the ship can come fully to
   rest in space even in coupled mode. Atmospheric minimum speed follows the

@@ -25,7 +25,7 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.3.0"
+#define BF_VERSION "1.3.1"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
@@ -1166,31 +1166,52 @@ static void flight_tick(void *ship, float dt)
 
     int changed = 0;
 
-    /* 1. Momentum (decoupled mode only): keep only what the pilot commanded.
-     * Above MomentumMinSpeed, whatever the game did to the velocity on an axis
-     * the pilot isn't commanding is discarded - its steering toward the nose,
-     * drift pull, throttle wind-down. The velocity stays fixed in space no
-     * matter HOW the game would have bent it. W/S/boost still pass the game's
-     * throttle through along the nose. Our own strafe thrust comes after.
-     * In coupled mode the game's flight model (steering, braking, min-speed)
-     * is left to run: only the strafe thrust below is added on top of it. */
-    if (!resync && !handoff && g_decoupled && cfg.world_momentum && len3(M.v) > cfg.momentum_min_speed) {
-        /* Pass the game's forward change only in the direction the pilot pushes:
-         * W/boost keep accelerating, S keeps braking - so holding W above normal
-         * speed isn't dragged down by the game's overspeed brake. */
-        float gfc = dot3(g, at), keep_f = 0.0f;
-        int push = thr_in || bst_in;
-        if (push && !brk_in)      keep_f = gfc > 0 ? gfc : 0;
-        else if (brk_in && !push) keep_f = gfc < 0 ? gfc : 0;
-        else if (fwd_in)          keep_f = gfc;
-        float dropped[3];
-        for (int i = 0; i < 3; i++) {
-            float nv = M.v[i] + at[i] * keep_f;
-            dropped[i] = v[i] - nv;
-            v[i] = nv;
+    /* 1. Momentum.
+     * Decoupled: above MomentumMinSpeed, whatever the game did to the velocity
+     * on an axis the pilot isn't commanding is discarded - its steering toward
+     * the nose, drift pull, throttle wind-down. The velocity stays fixed in
+     * space no matter HOW the game would have bent it. W/S/boost still pass the
+     * game's throttle through along the nose.
+     * Coupled while strafing: the game's flight model converts sustained
+     * sideways/vertical drift into forward/backwards velocity - it steers the
+     * velocity vector toward the nose (live logs: a pure strafe in space drew
+     * up to ~30 m/s^2 of nose-axis push from the game). Cancel only that
+     * nose-axis change: the game's own bleed of the drift keeps running (the
+     * vanilla "gentle push" feel), and the drift stays sideways. The real-drift
+     * requirement leaves hover/landing alone (nose-axis lift with ~no drift);
+     * hand-off already covers autopilot, pulse drive, impacts, take-off.
+     * In coupled mode otherwise the game's flight model (steering, braking,
+     * min-speed) is left to run: only the strafe thrust below is added. */
+    if (!resync && !handoff) {
+        int decon = g_decoupled && cfg.world_momentum && len3(M.v) > cfg.momentum_min_speed;
+        float mvr = dot3(M.v, right), mvu = dot3(M.v, up);
+        int strafe_conv = !g_decoupled && (sx != 0 || sy != 0) && !fwd_in &&
+                          mvr * mvr + mvu * mvu > 25.0f;
+        if (decon || strafe_conv) {
+            /* Each keep_* is the part of the game's change along that axis we
+             * add back on top of our last write (a velocity delta, not a factor). */
+            float gcr = dot3(g, right), gcu = dot3(g, up), gfc = dot3(g, at);
+            float keep_r = 0.0f, keep_u = 0.0f, keep_f = 0.0f;
+            if (strafe_conv) {
+                keep_r = gcr; keep_u = gcu;   /* let the game bleed the drift */
+            } else {
+                /* Pass the game's forward change only in the direction the pilot
+                 * pushes: W/boost keep accelerating, S keeps braking - so holding
+                 * W above normal speed isn't dragged down by the overspeed brake. */
+                int push = thr_in || bst_in;
+                if (push && !brk_in)      keep_f = gfc > 0 ? gfc : 0;
+                else if (brk_in && !push) keep_f = gfc < 0 ? gfc : 0;
+                else if (fwd_in)          keep_f = gfc;
+            }
+            float dropped[3];
+            for (int i = 0; i < 3; i++) {
+                float nv = M.v[i] + right[i] * keep_r + up[i] * keep_u + at[i] * keep_f;
+                dropped[i] = v[i] - nv;
+                v[i] = nv;
+            }
+            D.discarded += len3(dropped);
+            changed = 1;
         }
-        D.discarded += len3(dropped);
-        changed = 1;
     }
 
     float vr = dot3(v, right), vu = dot3(v, up), vf = dot3(v, at);
@@ -1602,6 +1623,33 @@ int main(void)
     sim_run(180, dt, 0, 0, 1);
     check("AC' decoupled strafe vs cut assist (x0.1): builds to the cap",
           fabsf(dot3(W, R[0]) - 140) < 1, "sideways after 3s = %.1f", dot3(W, R[0]));
+
+    /* S. the 1.3.0 bug: the game steers the velocity toward the nose
+     * (sim_swing) in response to sustained drift, converting it into forward
+     * speed. In coupled strafe the mod cancels only the nose-axis part of
+     * that push - the drift builds (and bleeds) as before, no forward gained. */
+    sim_reset(0, 100, 0); g_enabled = 0; sim_swing = 40;
+    sim_run(180, dt, 0, 0, 0);
+    check("S0 vanilla: nose-steering converts drift into forward speed",
+          dot3(W, R[2]) > 50, "fwd after 3s = %.1f", dot3(W, R[2]));
+    g_enabled = 1; sim_swing = 0;
+    sim_reset(0, 30, 0); sim_swing = 40; sim_keys['D'] = 1;
+    sim_run(180, dt, 0, 0, 0);
+    check("S coupled strafe vs nose-steering: drift builds, no forward gained",
+          dot3(W, R[0]) > 50 && fabsf(dot3(W, R[2])) < 2,
+          "side=%.1f fwd=%.1f after 3s", dot3(W, R[0]), dot3(W, R[2]));
+    sim_keys['D'] = 0; sim_swing = 0;
+    sim_reset(0, 30, 0); sim_game_accel[2] = 30; sim_keys['D'] = 1;
+    sim_run(180, dt, 0, 0, 0);
+    check("S' coupled strafe: game's nose-axis push cancelled, drift kept",
+          dot3(W, R[0]) > 50 && fabsf(dot3(W, R[2])) < 1,
+          "side=%.1f fwd=%.1f after 3s", dot3(W, R[0]), dot3(W, R[2]));
+    sim_keys['D'] = 0; sim_game_accel[2] = 0;
+    sim_reset(0, 0, 0); sim_game_accel[1] = 40; sim_keys['D'] = 1;
+    sim_run(120, dt, 0, 0, 0);
+    check("S'' coupled strafe + vertical lift: lift not cancelled",
+          dot3(W, R[1]) > 20, "up after 2s = %.1f", dot3(W, R[1]));
+    sim_keys['D'] = 0; sim_game_accel[1] = 0;
 
     /* G. slow flight: game changes pass through below MomentumMinSpeed */
     sim_reset(20, 0, 0); memcpy(w0, W, sizeof w0); g_decoupled = 1;
