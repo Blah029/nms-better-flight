@@ -15,6 +15,12 @@
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+/* Types only: XInput and DirectInput are loaded at runtime (controller
+ * diagnostics), so the import table doesn't change. */
+#define DIRECTINPUT_VERSION 0x0800
+#define COBJMACROS
+#include <dinput.h>
+#include <xinput.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -25,7 +31,7 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.3.3"
+#define BF_VERSION "1.3.4"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
@@ -243,6 +249,7 @@ static struct {
     int world_momentum;
     int invert_lateral, invert_vertical, debug;
     int flight_retune;
+    int input_diag;
 } cfg;
 
 static wchar_t g_ini[MAX_PATH];
@@ -334,6 +341,7 @@ static void load_config(void)
     cfg.invert_vertical  = ini_float(L"tuning", L"InvertVertical", 0) != 0;
     cfg.debug            = ini_float(L"tuning", L"Debug",          0) != 0;
     cfg.flight_retune    = ini_float(L"tuning", L"FlightRetune",   1) != 0;
+    cfg.input_diag       = ini_float(L"input",  L"Diagnostics",    0) != 0;
     char k1[40], k2[40], k3[40], k4[40], k5[40], k6[40], k7[40], k8[40], k9[40], k10[40];
     logmsg("config: strafe L=%s R=%s U=%s D=%s decouple=%s toggle=%s | coupled throttle keys thrust=%s brake=%s boost=%s | "
            "hand-off keys=%s %.0fs, fwd push>%.0f, impact>%.0f, >%.0f below momentum speed | "
@@ -348,7 +356,7 @@ static void load_config(void)
            cfg.lateral_accel, cfg.vertical_accel, cfg.max_strafe_speed,
            cfg.world_momentum, cfg.momentum_min_speed, cfg.drift_cap,
            cfg.invert_lateral, cfg.invert_vertical, cfg.debug);
-    logmsg("config: flight retune=%d", cfg.flight_retune);
+    logmsg("config: flight retune=%d | controller diagnostics=%d", cfg.flight_retune, cfg.input_diag);
 }
 
 static int ini_changed(void)
@@ -570,19 +578,16 @@ static int resolve(int verbose)
 
 static int g_enabled = 1;       /* ToggleKey: every native flight feature on/off */
 static int g_decoupled = 0;     /* DecoupleKey */
-static int g_toggle_was_down, g_decouple_was_down;
-static int g_switch_to_coupled;   /* one-frame flag: decouple key switched us to coupled */
-static int g_piloted = 1;       /* last pilot-check result, for logging transitions */
 #ifdef BF_SIMTEST
 static double sim_ms;                           /* simulated clock */
 static ULONGLONG bf_ticks(void) { return (ULONGLONG)sim_ms; }
 #else
 static ULONGLONG bf_ticks(void) { return GetTickCount64(); }
 #endif
-static ULONGLONG g_hard_until;                  /* hand-off not cancelled by pilot input (impact, pulse exit) */
-static ULONGLONG g_handoff_until;   /* coupled mode stands down while the game drives the ship */
-static ULONGLONG g_strafe_window;   /* strafe-release window active until this tick */
-static ULONGLONG g_next_ini_check, g_next_diag, g_next_warn;
+static ULONGLONG g_next_ini_check, g_next_warn;
+/* One key press is seen by every ship processed that frame: act on it once. */
+#define TOGGLE_DEBOUNCE_MS 150
+static ULONGLONG g_last_toggle_press, g_last_decouple_press;
 static unsigned g_skipped;
 static float g_last_ix = 0, g_last_iy = 0;
 static int g_logged_first_apply;
@@ -593,23 +598,81 @@ static int g_logged_first_apply;
  * warp exit, docking): accept it rather than fight it. */
 #define JUMP_DV     1500.0f
 
-/* What we left the ship with last frame, in world space. */
-static struct {
-    int valid;
-    ULONGLONG t;
-    float v[3];
-    float right[3], up[3], at[3];
-} M;
+/* ---- per-ship state ----
+ * The game runs UpdateControlled for more than one ship per frame: corvettes
+ * with nobody aboard, and other players' ships in multiplayer. Nothing about
+ * "the ship" may be global. Up to 1.2.0 it was: one ship's velocity memory got
+ * written into another (random velocities), an unpiloted corvette marked Z/F8
+ * as held every frame (stuck in coupled mode), and it reset the piloted ship's
+ * memory every frame (coupled braking never engaged). */
+typedef struct {
+    void     *ship;
+    ULONGLONG last_seen;
+    int       piloted;                  /* last pilot-check result, for logging transitions */
+    int       announce;                 /* log this ship's census line on its first frame */
+    int       toggle_was_down, decouple_was_down;
+    ULONGLONG hard_until;               /* hand-off not cancelled by pilot input (impact, pulse exit) */
+    ULONGLONG handoff_until;            /* coupled mode stands down while the game drives the ship */
+    ULONGLONG strafe_window;            /* strafe-release / mode-switch window active until this tick */
+    int       switch_to_coupled;        /* one-frame flag: decouple key switched us to coupled */
+    ULONGLONG next_diag;
+    struct {                            /* what we left the ship with last frame, in world space */
+        int valid;
+        ULONGLONG t;
+        float v[3];
+        float right[3], up[3], at[3];
+    } m;
+    struct {                            /* per-second diagnostics (sums over the diag window) */
+        unsigned frames;
+        float ga_r, ga_u, ga_f;         /* game's own push per ship axis, mean |m/s^2| */
+        float discarded;                /* m/s of game push discarded on uncommanded axes */
+        unsigned handoff_frames;
+        int capped;
+    } d;
+} ship_state_t;
 
-/* Per-second diagnostics (sums over the diag window). */
-static struct {
-    unsigned frames;
-    float ga_r, ga_u, ga_f;   /* game's own push per ship axis, mean |m/s^2| */
-    float discarded;          /* m/s of game push discarded on uncommanded axes */
+#define MAX_SHIPS 8
+static ship_state_t g_ships[MAX_SHIPS];
+static ship_state_t g_ship_none;               /* until the first ship is seen */
+static ship_state_t *g_cur = &g_ship_none;     /* the ship flight_tick is handling */
 
-    unsigned handoff_frames;
-    int capped;
-} D;
+/* The flight code reads these as if there were one ship; they are the current one's. */
+#define M                   (g_cur->m)
+#define D                   (g_cur->d)
+#define g_piloted           (g_cur->piloted)
+#define g_toggle_was_down   (g_cur->toggle_was_down)
+#define g_decouple_was_down (g_cur->decouple_was_down)
+#define g_hard_until        (g_cur->hard_until)
+#define g_handoff_until     (g_cur->handoff_until)
+#define g_strafe_window     (g_cur->strafe_window)
+#define g_switch_to_coupled (g_cur->switch_to_coupled)
+#define g_next_diag         (g_cur->next_diag)
+
+static ship_state_t *ship_state(void *ship, ULONGLONG now)
+{
+    ship_state_t *e = NULL, *oldest = &g_ships[0];
+    for (int i = 0; i < MAX_SHIPS; i++) {
+        if (g_ships[i].ship == ship) { g_ships[i].last_seen = now; return &g_ships[i]; }
+        if (!e && !g_ships[i].ship) e = &g_ships[i];
+        if (g_ships[i].last_seen < oldest->last_seen) oldest = &g_ships[i];
+    }
+    if (!e) e = oldest;                        /* forget the ship not seen for longest */
+    memset(e, 0, sizeof *e);
+    e->ship = ship;
+    e->last_seen = now;
+    e->piloted = 1;
+    e->announce = 1;
+    e->toggle_was_down = e->decouple_was_down = 1;   /* a key already held when a ship appears isn't a press */
+    return e;
+}
+
+static int ship_index_of(const void *ship)
+{
+    for (int i = 0; i < MAX_SHIPS; i++) if (g_ships[i].ship == ship) return i;
+    return -1;
+}
+
+static int ship_index(void) { return g_cur >= g_ships && g_cur < g_ships + MAX_SHIPS ? (int)(g_cur - g_ships) : -1; }
 
 static inline float dot3(const float *a, const float *b) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
 static inline float len3(const float *a) { return sqrtf(dot3(a, a)); }
@@ -1010,9 +1073,61 @@ static int ship_piloted(void *ship)
            *((uint8_t *)ship + G.off_controller_active) != 0;
 }
 
+/* ---- ship census (multiplayer research) ----
+ * Which ships the game runs through the flight update, and what controls them.
+ * Logged once per ship, plus a rate-limited note when two ships are at the
+ * controls in the same frame - the situation where another player's ship would
+ * get this player's keys. Every pointer is checked readable first. */
+static int readable(const void *p, size_t n)
+{
+    MEMORY_BASIC_INFORMATION mbi;
+    if (!plausible((void *)p) || !VirtualQuery(p, &mbi, sizeof mbi)) return 0;
+    if (mbi.State != MEM_COMMIT || (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return 0;
+    if (!(mbi.Protect & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+                         PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return 0;
+    return (const uint8_t *)p + n <= (const uint8_t *)mbi.BaseAddress + mbi.RegionSize;
+}
+
+/* MSVC x64 RTTI: vtable[-1] -> CompleteObjectLocator { u32 signature (1), offset,
+ * cdOffset, typeDescriptor RVA, classDescriptor RVA, self RVA }; the type
+ * descriptor's decorated name (".?AVcGcPlayerController@@") is at +0x10. */
+static const char *rtti_name(const void *obj)
+{
+    if (!readable(obj, 8)) return NULL;
+    const uint8_t *vt = *(const uint8_t *const *)obj;
+    if (!readable(vt - 8, 8)) return NULL;
+    const uint8_t *col = *(const uint8_t *const *)(vt - 8);
+    if (!readable(col, 24)) return NULL;
+    uint32_t sig, td, self;
+    memcpy(&sig, col, 4); memcpy(&td, col + 12, 4); memcpy(&self, col + 20, 4);
+    if (sig != 1) return NULL;
+    const char *name = (const char *)(col - self + td + 16);
+    if (!readable(name, 64) || memcmp(name, ".?AV", 4) != 0 || !memchr(name, 0, 64)) return NULL;
+    return name;
+}
+
+static void log_ship_census(void *ship, int piloted)
+{
+    const char *cls = "unknown";
+    void *ctrl = NULL;
+    if (G.off_controller >= 0) {
+        void **h = *(void ***)((uint8_t *)ship + G.off_controller);
+        ctrl = h;
+        const char *n = rtti_name(h);                           /* the field is the object... */
+        if (!n && readable(h, 8)) n = rtti_name(*h);            /* ...or a handle to it */
+        if (n) cls = n;
+    }
+    logmsg("ship %d: first seen %s | controller %p class %s", ship_index(),
+           piloted ? "with a pilot at the controls" : "with no pilot", ctrl, cls);
+}
+
+static void *g_last_pilot_ship;
+static ULONGLONG g_last_pilot_t, g_next_multi_note;
+
 static void flight_tick(void *ship, float dt)
 {
     ULONGLONG now = bf_ticks();
+    g_cur = ship_state(ship, now);
 
     if (now >= g_next_ini_check) {
         g_next_ini_check = now + 1000;
@@ -1024,13 +1139,23 @@ static void flight_tick(void *ship, float dt)
     /* Nobody flying this ship: leave it to the game and don't read keys - they
      * belong to whatever the player is doing instead (jetpack, walking). */
     if (!ship_piloted(ship)) {
-        if (g_piloted && cfg.debug) logmsg("no pilot at the controls (corvette interior / EVA) - standing by");
+        if (g_cur->announce) { log_ship_census(ship, 0); g_cur->announce = 0; }
+        if (g_piloted && cfg.debug) logmsg("ship %d: no pilot at the controls (corvette interior / EVA) - standing by", ship_index());
         g_piloted = 0;
         M.valid = 0;
-        g_toggle_was_down = g_decouple_was_down = 1;    /* a key held while sitting down isn't a press */
+        g_toggle_was_down = g_decouple_was_down = 1;    /* this ship only: a key held while sitting down isn't a press */
         return;
     }
-    if (!g_piloted && cfg.debug) logmsg("pilot back at the controls");
+    if (g_cur->announce) { log_ship_census(ship, 1); g_cur->announce = 0; }
+    if (g_last_pilot_ship && g_last_pilot_ship != ship && now - g_last_pilot_t < 50 && now >= g_next_multi_note) {
+        g_next_multi_note = now + 10000;
+        logmsg("NOTE: ships %d and %d both have a pilot at the controls in the same frame "
+               "(another player's ship?) - please include this log in multiplayer reports",
+               ship_index_of(g_last_pilot_ship), ship_index());
+    }
+    g_last_pilot_ship = ship;
+    g_last_pilot_t = now;
+    if (!g_piloted && cfg.debug) logmsg("ship %d: pilot at the controls", ship_index());
     g_piloted = 1;
 
     /* ---- input (only while the game has focus) ---- */
@@ -1038,13 +1163,15 @@ static void flight_tick(void *ship, float dt)
     int fwd_in = 0, auto_key = 0, thr_in = 0, brk_in = 0, bst_in = 0;
     if (game_focused()) {
         int t = down_set(&cfg.toggle);
-        if (t && !g_toggle_was_down) {
+        if (t && !g_toggle_was_down && now - g_last_toggle_press >= TOGGLE_DEBOUNCE_MS) {
+            g_last_toggle_press = now;
             g_enabled = !g_enabled;
             logmsg("Better Flight native features %s (toggle key)", g_enabled ? "ENABLED" : "DISABLED");
         }
         g_toggle_was_down = t;
         int d = down_set(&cfg.decouple);
-        if (d && !g_decouple_was_down) {
+        if (d && !g_decouple_was_down && now - g_last_decouple_press >= TOGGLE_DEBOUNCE_MS) {
+            g_last_decouple_press = now;
             g_decoupled = !g_decoupled;
             if (!g_decoupled) g_switch_to_coupled = 1;
             logmsg("flight mode: %s", g_decoupled ? "DECOUPLED" : "COUPLED");
@@ -1284,9 +1411,9 @@ static void flight_tick(void *ship, float dt)
     D.frames++;
     if (cfg.debug && now >= g_next_diag) {
         g_next_diag = now + 1000;
-        logmsg("diag: %s |v|=%6.1f right=%7.1f up=%7.1f at=%7.1f in x=%+.0f y=%+.0f fwd=%d dt=%.4f | "
+        logmsg("diag: ship %d %s |v|=%6.1f right=%7.1f up=%7.1f at=%7.1f in x=%+.0f y=%+.0f fwd=%d dt=%.4f | "
                "discarded game push %.0f m/s%s%s%s",
-               g_decoupled ? "DECOUP" : "COUPLED", speed, vr, vu, vf, ix, iy, fwd_in, dt,
+               ship_index(), g_decoupled ? "DECOUP" : "COUPLED", speed, vr, vu, vf, ix, iy, fwd_in, dt,
                D.discarded,
                D.capped ? " | DRIFT CAPPED" : "", resync ? " | resync" : "", handoff ? " | hand-off" : "");
         logmsg("measure: game push mean |right|=%.0f |up|=%.0f |fwd|=%.0f m/s^2 | hand-off %u/%u frames",
@@ -1307,6 +1434,260 @@ static uint64_t __fastcall hook_update_controlled(void *ship, float dt)
     uint64_t r = orig_update_controlled(ship, dt);
     flight_tick(ship, dt);
     return r;
+}
+
+/* ======================================================================== */
+/*  controller diagnostics                                                  */
+/* ======================================================================== */
+/* Research aid for controller and HOSAS support. With [input] Diagnostics = 1,
+ * log every controller the DLL can see - XInput pads and DirectInput game
+ * controllers - and their input changes. Read-only.
+ *
+ * XInput and DirectInput are loaded at runtime, so the DLL's import table stays
+ * exactly as it is (a missing import is what broke 1.0.0 on Windows). Devices
+ * are opened non-exclusive and in the background, so the game's own input is
+ * unaffected. */
+
+typedef DWORD   (WINAPI *fn_xinput_get_state)(DWORD, XINPUT_STATE *);
+typedef HRESULT (WINAPI *fn_di8_create)(HINSTANCE, DWORD, REFIID, LPVOID *, LPUNKNOWN);
+
+#define DIAG_MAX_DEV 16
+#define DIAG_MAX_LINES_PER_SEC 40
+
+typedef struct {
+    IDirectInputDevice8W *dev;
+    GUID  instance;
+    char  name[128];
+    int   present, gone;
+    char  last[256];
+} diag_dev_t;
+
+static struct {
+    fn_xinput_get_state xget;
+    int        x_connected[4];
+    char       x_last[4][96];
+    IDirectInput8W *di;
+    diag_dev_t dev[DIAG_MAX_DEV];
+    int        ndev;
+    HWND       hwnd;
+    ULONGLONG  next_scan, line_window;
+    int        lines;
+} DG;
+
+static void diag_log(const char *fmt, ...)
+{
+    ULONGLONG now = GetTickCount64();
+    if (now - DG.line_window >= 1000) {
+        if (DG.lines > DIAG_MAX_LINES_PER_SEC)
+            logmsg("input: (%d lines suppressed)", DG.lines - DIAG_MAX_LINES_PER_SEC);
+        DG.line_window = now;
+        DG.lines = 0;
+    }
+    if (++DG.lines > DIAG_MAX_LINES_PER_SEC) return;
+    char buf[400];
+    va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
+    logmsg("%s", buf);
+}
+
+/* -range..range -> -10..10 */
+static int diag_q10(long v, long range)
+{
+    long q = lround(10.0 * (double)v / (double)range);
+    return q < -10 ? -10 : q > 10 ? 10 : (int)q;
+}
+
+static void diag_xinput_init(void)
+{
+    static const wchar_t *const dlls[] = { L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll" };
+    for (int i = 0; i < 3 && !DG.xget; i++) {
+        HMODULE m = LoadLibraryW(dlls[i]);
+        if (m) DG.xget = (fn_xinput_get_state)GetProcAddress(m, "XInputGetState");
+        if (DG.xget) logmsg("input: XInput from %ls", dlls[i]);
+    }
+    if (!DG.xget) logmsg("input: no XInput DLL available");
+}
+
+static void diag_xinput_poll(void)
+{
+    if (!DG.xget) return;
+    for (DWORD i = 0; i < 4; i++) {
+        XINPUT_STATE s;
+        memset(&s, 0, sizeof s);
+        int on = DG.xget(i, &s) == ERROR_SUCCESS;
+        if (on != DG.x_connected[i]) {
+            diag_log("input: XInput pad %lu %s", (unsigned long)i, on ? "CONNECTED" : "disconnected");
+            DG.x_connected[i] = on;
+            DG.x_last[i][0] = 0;
+        }
+        if (!on) continue;
+        const XINPUT_GAMEPAD *g = &s.Gamepad;
+        char line[96];
+        snprintf(line, sizeof line, "buttons=%04x LX=%+d LY=%+d RX=%+d RY=%+d LT=%d RT=%d",
+                 g->wButtons, diag_q10(g->sThumbLX, 32767), diag_q10(g->sThumbLY, 32767),
+                 diag_q10(g->sThumbRX, 32767), diag_q10(g->sThumbRY, 32767),
+                 diag_q10(g->bLeftTrigger, 255), diag_q10(g->bRightTrigger, 255));
+        if (strcmp(line, DG.x_last[i]) != 0) {
+            diag_log("input: XInput pad %lu %s", (unsigned long)i, line);
+            strcpy(DG.x_last[i], line);
+        }
+    }
+}
+
+static BOOL CALLBACK diag_find_window(HWND h, LPARAM unused)
+{
+    (void)unused;
+    DWORD pid;
+    GetWindowThreadProcessId(h, &pid);
+    if (pid == GetCurrentProcessId() && IsWindowVisible(h) && !GetWindow(h, GW_OWNER)) {
+        DG.hwnd = h;
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static const char *diag_dev_type(DWORD t)
+{
+    switch (GET_DIDEVICE_TYPE(t)) {
+    case DI8DEVTYPE_JOYSTICK:     return "joystick";
+    case DI8DEVTYPE_GAMEPAD:      return "gamepad";
+    case DI8DEVTYPE_FLIGHT:       return "flight";
+    case DI8DEVTYPE_DRIVING:      return "driving";
+    case DI8DEVTYPE_1STPERSON:    return "1st-person";
+    case DI8DEVTYPE_SUPPLEMENTAL: return "supplemental";
+    default:                      return "other";
+    }
+}
+
+static BOOL CALLBACK diag_enum_device(const DIDEVICEINSTANCEW *inst, LPVOID unused)
+{
+    (void)unused;
+    for (int i = 0; i < DG.ndev; i++)
+        if (IsEqualGUID(&DG.dev[i].instance, &inst->guidInstance)) {
+            DG.dev[i].present = 1;
+            if (DG.dev[i].gone) {
+                logmsg("input: DirectInput device %d '%s' is back", i, DG.dev[i].name);
+                DG.dev[i].gone = 0;
+                DG.dev[i].last[0] = 0;
+            }
+            return DIENUM_CONTINUE;
+        }
+    if (DG.ndev >= DIAG_MAX_DEV) return DIENUM_STOP;
+
+    diag_dev_t *d = &DG.dev[DG.ndev];
+    memset(d, 0, sizeof *d);
+    d->instance = inst->guidInstance;
+    d->present = 1;
+    WideCharToMultiByte(CP_UTF8, 0, inst->tszProductName, -1, d->name, sizeof d->name, NULL, NULL);
+    DWORD vidpid = inst->guidProduct.Data1;
+    logmsg("input: DirectInput device %d: '%s' type=%s VID=%04lx PID=%04lx", DG.ndev, d->name,
+           diag_dev_type(inst->dwDevType), (unsigned long)(vidpid & 0xFFFF), (unsigned long)((vidpid >> 16) & 0xFFFF));
+
+    if (FAILED(IDirectInput8_CreateDevice(DG.di, &inst->guidInstance, &d->dev, NULL))) {
+        logmsg("input:   could not open it");
+        d->dev = NULL;
+        DG.ndev++;
+        return DIENUM_CONTINUE;
+    }
+    IDirectInputDevice8_SetDataFormat(d->dev, &c_dfDIJoystick2);
+    HRESULT co = IDirectInputDevice8_SetCooperativeLevel(d->dev, DG.hwnd, DISCL_BACKGROUND | DISCL_NONEXCLUSIVE);
+    if (FAILED(co))
+        co = IDirectInputDevice8_SetCooperativeLevel(d->dev, NULL, DISCL_BACKGROUND | DISCL_NONEXCLUSIVE);
+    DIPROPRANGE range;
+    range.diph.dwSize = sizeof range;
+    range.diph.dwHeaderSize = sizeof range.diph;
+    range.diph.dwHow = DIPH_DEVICE;
+    range.diph.dwObj = 0;
+    range.lMin = -1000;
+    range.lMax = 1000;
+    IDirectInputDevice8_SetProperty(d->dev, DIPROP_RANGE, &range.diph);
+    IDirectInputDevice8_Acquire(d->dev);
+    DIDEVCAPS caps;
+    caps.dwSize = sizeof caps;
+    if (SUCCEEDED(IDirectInputDevice8_GetCapabilities(d->dev, &caps)))
+        logmsg("input:   %lu axes, %lu buttons, %lu hats%s", (unsigned long)caps.dwAxes,
+               (unsigned long)caps.dwButtons, (unsigned long)caps.dwPOVs,
+               FAILED(co) ? " (could not set background access)" : "");
+    DG.ndev++;
+    return DIENUM_CONTINUE;
+}
+
+static void diag_dinput_scan(void)
+{
+    if (!DG.di) return;
+    for (int i = 0; i < DG.ndev; i++) DG.dev[i].present = 0;
+    IDirectInput8_EnumDevices(DG.di, DI8DEVCLASS_GAMECTRL, diag_enum_device, NULL, DIEDFL_ATTACHEDONLY);
+    for (int i = 0; i < DG.ndev; i++)
+        if (!DG.dev[i].present && !DG.dev[i].gone) {
+            logmsg("input: DirectInput device %d '%s' removed", i, DG.dev[i].name);
+            DG.dev[i].gone = 1;
+        }
+}
+
+static void diag_dinput_poll(void)
+{
+    for (int i = 0; i < DG.ndev; i++) {
+        diag_dev_t *d = &DG.dev[i];
+        if (!d->dev || !d->present) continue;
+        IDirectInputDevice8_Poll(d->dev);
+        DIJOYSTATE2 js;
+        HRESULT hr = IDirectInputDevice8_GetDeviceState(d->dev, sizeof js, &js);
+        if (hr == DIERR_INPUTLOST || hr == DIERR_NOTACQUIRED) {
+            IDirectInputDevice8_Acquire(d->dev);
+            continue;
+        }
+        if (FAILED(hr)) continue;
+        char line[256];
+        int n = snprintf(line, sizeof line, "X=%+d Y=%+d Z=%+d RX=%+d RY=%+d RZ=%+d S0=%+d S1=%+d",
+                         diag_q10(js.lX, 1000), diag_q10(js.lY, 1000), diag_q10(js.lZ, 1000),
+                         diag_q10(js.lRx, 1000), diag_q10(js.lRy, 1000), diag_q10(js.lRz, 1000),
+                         diag_q10(js.rglSlider[0], 1000), diag_q10(js.rglSlider[1], 1000));
+        for (int h = 0; h < 4 && n < (int)sizeof line - 16; h++)
+            if (LOWORD(js.rgdwPOV[h]) != 0xFFFF)
+                n += snprintf(line + n, sizeof line - n, " hat%d=%lu", h, (unsigned long)(js.rgdwPOV[h] / 100));
+        n += snprintf(line + n, sizeof line - n, " buttons=");
+        int any = 0;
+        for (int b = 0; b < 128 && n < (int)sizeof line - 8; b++)
+            if (js.rgbButtons[b] & 0x80) {
+                n += snprintf(line + n, sizeof line - n, "%s%d", any ? "," : "", b);
+                any = 1;
+            }
+        if (!any) snprintf(line + n, sizeof line - n, "-");
+        if (strcmp(line, d->last) != 0) {
+            diag_log("input: DirectInput %d '%s' %s", i, d->name, line);
+            strcpy(d->last, line);
+        }
+    }
+}
+
+static DWORD WINAPI input_diag_thread(LPVOID unused)
+{
+    (void)unused;
+    int started = 0;
+    for (;;) {
+        if (!cfg.input_diag) { Sleep(500); continue; }
+        if (!started) {
+            started = 1;
+            logmsg("input: controller diagnostics ON - logging XInput pads and DirectInput game controllers (read-only)");
+            diag_xinput_init();
+            EnumWindows(diag_find_window, 0);
+            HMODULE m = LoadLibraryW(L"dinput8.dll");
+            fn_di8_create create = m ? (fn_di8_create)GetProcAddress(m, "DirectInput8Create") : NULL;
+            if (!create || FAILED(create(g_self, DIRECTINPUT_VERSION, &IID_IDirectInput8W, (LPVOID *)&DG.di, NULL))) {
+                DG.di = NULL;
+                logmsg("input: DirectInput unavailable");
+            }
+        }
+        ULONGLONG now = GetTickCount64();
+        if (now >= DG.next_scan) {
+            DG.next_scan = now + 5000;
+            if (!DG.hwnd) EnumWindows(diag_find_window, 0);
+            diag_dinput_scan();
+        }
+        diag_xinput_poll();
+        diag_dinput_poll();
+        Sleep(50);
+    }
+    return 0;
 }
 
 /* ======================================================================== */
@@ -1360,6 +1741,8 @@ static DWORD WINAPI init_thread(LPVOID unused)
                 return 0;
             }
             logmsg("hook installed. Strafe: fly a ship and use the keys above. Toggle with the toggle key.");
+            HANDLE diag = CreateThread(NULL, 0, input_diag_thread, NULL, 0, NULL);
+            if (diag) CloseHandle(diag);
             retune_init();
             return 0;
         }
@@ -1438,15 +1821,38 @@ static float R[3][3];              /* rows: right, up, at (world space) */
 static int   sim_writes;
 static uint8_t sim_ship[0x100], sim_phys[0x100], sim_state_blob[0x10];
 
+/* Second ship (tests M*): another ship the game also runs UpdateControlled on -
+ * a parked corvette, or another player's ship in multiplayer. */
+static float Wb[3], Rb[3][3];
+static int   sim_writes_b;
+static uint8_t sim_ship_b[0x100], sim_phys_b[0x100];
+
 static void * __fastcall sim_get_velocity(void *ship, float *out)
-{ (void)ship; out[0] = W[0]; out[1] = W[1]; out[2] = W[2]; out[3] = 0; return out; }
+{
+    const float *w = ship == sim_ship_b ? Wb : W;
+    out[0] = w[0]; out[1] = w[1]; out[2] = w[2]; out[3] = 0; return out;
+}
 static void __fastcall sim_set_linear_velocity(void *rb, const float *v, uint8_t n)
-{ (void)rb; (void)n; W[0] = v[0]; W[1] = v[1]; W[2] = v[2]; sim_writes++; }
+{
+    (void)n;
+    if (rb == sim_phys_b + 0x20) { Wb[0] = v[0]; Wb[1] = v[1]; Wb[2] = v[2]; sim_writes_b++; return; }
+    W[0] = v[0]; W[1] = v[1]; W[2] = v[2]; sim_writes++;
+}
 static float * __fastcall sim_get_transform(void *rb, float *out)
 {
-    (void)rb;
-    for (int i = 0; i < 3; i++) { out[i] = -R[0][i]; out[4 + i] = R[1][i]; out[8 + i] = R[2][i]; }
+    float (*r)[3] = rb == sim_phys_b + 0x20 ? Rb : R;
+    for (int i = 0; i < 3; i++) { out[i] = -r[0][i]; out[4 + i] = r[1][i]; out[8 + i] = r[2][i]; }
     return out;                                    /* row 0 = LEFT, as in the game */
+}
+
+/* one frame of two ships, in either order the game might update them */
+static void sim_run2(int frames, float dt, int b_first)
+{
+    for (int f = 0; f < frames; f++) {
+        sim_ms += dt * 1000.0;
+        if (b_first) { flight_tick(sim_ship_b, dt); flight_tick(sim_ship, dt); }
+        else         { flight_tick(sim_ship, dt);   flight_tick(sim_ship_b, dt); }
+    }
 }
 
 static void sim_reset(float v_at, float v_right, float v_up)
@@ -1454,10 +1860,10 @@ static void sim_reset(float v_at, float v_right, float v_up)
     float I[3][3] = { {1,0,0}, {0,1,0}, {0,0,1} };
     memcpy(R, I, sizeof R);
     for (int i = 0; i < 3; i++) W[i] = v_right * R[0][i] + v_up * R[1][i] + v_at * R[2][i];
-    memset(&M, 0, sizeof M); memset(&D, 0, sizeof D); memset(sim_keys, 0, sizeof sim_keys);
+    memset(g_ships, 0, sizeof g_ships); memset(&g_ship_none, 0, sizeof g_ship_none); g_cur = &g_ship_none;
+    memset(sim_keys, 0, sizeof sim_keys);
     memset(sim_game_accel, 0, sizeof sim_game_accel); sim_steer = 0; sim_reverse_brake = 0; sim_swing = 0;
     g_decoupled = 0; g_enabled = 1; sim_writes = 0; g_handoff_until = 0; g_hard_until = 0;
-    g_strafe_window = 0; g_switch_to_coupled = 0;
 }
 
 /* rotate the ship: axis 0 = yaw (about up), 1 = roll (about at) */
@@ -1733,8 +2139,9 @@ int main(void)
     check("G below 30 m/s: game still turns velocity (landing/hover)", fabsf(angle_deg(W, w0) - 90) < 2,
           "turned %.1f deg", angle_deg(W, w0));
 
-    /* H. F8 */
-    sim_reset(500, 0, 0); memcpy(w0, W, sizeof w0);
+    /* H. F8 (fly a frame first: a key already down on the frame a ship is first
+     *    seen counts as held, not pressed - as when switching ships) */
+    sim_reset(500, 0, 0); sim_run(1, dt, 0, 0, 1); memcpy(w0, W, sizeof w0);
     sim_keys[VK_F8] = 1; sim_run(1, dt, 0, 0, 1); sim_keys[VK_F8] = 0;
     sim_writes = 0; sim_run(60, dt, 0, HALF_PI, 1);
     check("H F8 off: no writes, vanilla behaviour", sim_writes == 0 && fabsf(angle_deg(W, w0) - 90) < 1,
@@ -2001,6 +2408,106 @@ int main(void)
 #undef SIM_FILL
         memset(&RT, 0, sizeof RT);
         cfg.flight_retune = 0;
+    }
+
+    /* M. several ships through UpdateControlled in one frame. The game runs it for
+     *    corvettes with nobody aboard, and (likely) other players' ships in
+     *    multiplayer. Player reports: Z stuck in coupled; sent in random directions. */
+    {
+        static void *ctl;
+        ctl = sim_state_blob;
+        G.off_controller = 0x40; G.off_controller_active = 0x48;
+        *(void **)(sim_ship_b + 0x10) = sim_phys_b;
+        *(void **)(sim_phys_b + 0x20 + 0x08) = sim_state_blob;
+        float I3[3][3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+
+        for (int order = 0; order < 2; order++) {
+            /* M1: parked corvette (no pilot) updated every frame - Z must still toggle */
+            sim_reset(300, 0, 0);
+            *(void **)(sim_ship + 0x40) = &ctl; sim_ship[0x48] = 1;
+            *(void **)(sim_ship_b + 0x40) = NULL; sim_ship_b[0x48] = 0;
+            memcpy(Rb, I3, sizeof Rb); memset(Wb, 0, sizeof Wb);
+            sim_run2(30, dt, order);
+            sim_keys['Z'] = 1; sim_run2(5, dt, order);
+            sim_keys['Z'] = 0; sim_run2(5, dt, order);
+            check(order ? "M1 unpiloted ship updated first: Z still toggles" : "M1 unpiloted ship updated after: Z still toggles",
+                  g_decoupled == 1, "decoupled=%d", g_decoupled);
+
+            /* M3: same scene - 1.3.x expectation: no mod braking, so the
+             *     piloted ship coasts untouched; the parked corvette is
+             *     left alone (no velocity crossing between ships) */
+            sim_reset(300, 0, 0);
+            *(void **)(sim_ship + 0x40) = &ctl; sim_ship[0x48] = 1;
+            memcpy(Rb, I3, sizeof Rb); memset(Wb, 0, sizeof Wb);
+            sim_writes = 0; sim_writes_b = 0;
+            sim_run2(60 * 8, dt, order);
+            check(order ? "M3 unpiloted ship first: coupled coasts, parked ship untouched"
+                        : "M3 unpiloted ship after: coupled coasts, parked ship untouched",
+                  fabsf(len3(W) - 300) < 1 && len3(Wb) < 1 &&
+                  sim_writes == 0 && sim_writes_b == 0,
+                  "ship A |v| %.1f (was 300), ship B |v| %.1f, writes A %d B %d",
+                  len3(W), len3(Wb), sim_writes, sim_writes_b);
+        }
+
+        /* M2: two piloted ships at nearby speeds - one's velocity must never be
+         *     written into the other (decoupled, no input: nothing should change) */
+        sim_reset(60, 0, 0); g_decoupled = 1;
+        *(void **)(sim_ship + 0x40) = &ctl; sim_ship[0x48] = 1;
+        *(void **)(sim_ship_b + 0x40) = &ctl; sim_ship_b[0x48] = 1;
+        memcpy(Rb, I3, sizeof Rb); memset(Wb, 0, sizeof Wb); sim_writes_b = 0;
+        sim_run2(60, dt, 0);
+        check("M2 two piloted ships: no velocity crosses between them",
+              fabsf(len3(W) - 60) < 1 && len3(Wb) < 1 && sim_writes_b == 0,
+              "ship A |v| %.1f (was 60), ship B |v| %.1f (was 0), writes to B %d", len3(W), len3(Wb), sim_writes_b);
+
+        /* M4: two piloted ships see the same Z press - it must toggle once, not twice */
+        sim_reset(0, 0, 0);
+        *(void **)(sim_ship + 0x40) = &ctl; sim_ship[0x48] = 1;
+        *(void **)(sim_ship_b + 0x40) = &ctl; sim_ship_b[0x48] = 1;
+        memcpy(Rb, I3, sizeof Rb); memset(Wb, 0, sizeof Wb);
+        sim_run2(30, dt, 0);
+        sim_keys['Z'] = 1; sim_run2(5, dt, 0);
+        sim_keys['Z'] = 0; sim_run2(20, dt, 0);
+        int once = g_decoupled == 1;
+        sim_keys['Z'] = 1; sim_run2(5, dt, 1);
+        sim_keys['Z'] = 0; sim_run2(20, dt, 1);
+        check("M4 two ships, one Z press each time: toggles exactly once per press",
+              once && g_decoupled == 0, "after 1st press decoupled=%d, after 2nd %d", once, g_decoupled);
+
+        /* M5: the fix must not break sitting down with Z held (P' in a two-ship scene) */
+        sim_reset(300, 0, 0);
+        *(void **)(sim_ship + 0x40) = &ctl; sim_ship[0x48] = 0;          /* A: pilot away */
+        *(void **)(sim_ship_b + 0x40) = NULL; sim_ship_b[0x48] = 0;      /* B: parked corvette */
+        memcpy(Rb, I3, sizeof Rb); memset(Wb, 0, sizeof Wb);
+        sim_keys['Z'] = 1; sim_run2(30, dt, 0);
+        sim_ship[0x48] = 1; sim_run2(30, dt, 0);                          /* sit down, Z still held */
+        check("M5 sitting down with Z held is not a press (with a parked corvette)", g_decoupled == 0, "decoupled=%d", g_decoupled);
+        sim_keys['Z'] = 0;
+
+        *(void **)(sim_ship + 0x40) = NULL; *(void **)(sim_ship_b + 0x40) = NULL;
+        G.off_controller = G.off_controller_active = -1;
+    }
+
+    /* RT. ship census: controller class name read through MSVC x64 RTTI, with the
+     *     field holding the object itself or a handle to it */
+    {
+        static struct { uint8_t pad[64]; uint32_t col[6]; uint8_t pad2[32]; struct { void *vft, *spare; char name[40]; } td; } img;
+        static const void *vtbl[2];
+        static struct { const void *vt; int x; } obj;
+        static const void *handle;
+        uint8_t *base = (uint8_t *)&img;
+        img.col[0] = 1;                                                /* signature: x64, image-relative */
+        img.col[3] = (uint32_t)((uint8_t *)&img.td - base);            /* type descriptor RVA */
+        img.col[5] = (uint32_t)((uint8_t *)img.col - base);            /* self RVA */
+        strcpy(img.td.name, ".?AVcGcPlayerController@@");
+        vtbl[0] = img.col; obj.vt = &vtbl[1]; handle = &obj;
+        const char *direct = rtti_name(&obj);
+        const char *via = rtti_name(&handle);
+        if (!via) via = rtti_name(handle);                             /* same fallback as the census */
+        int bad = rtti_name(NULL) != NULL || rtti_name((void *)0x20) != NULL;
+        check("RT census: controller class via RTTI (object, handle, bad pointers)",
+              direct && via && !strcmp(direct, img.td.name) && !strcmp(via, img.td.name) && !bad,
+              "object=%s handle=%s bad-pointer-safe=%d", direct ? direct : "NULL", via ? via : "NULL", !bad);
     }
 
     printf("\n%s (%d failed)\n", fails ? "SIMTEST FAIL" : "SIMTEST PASS", fails);

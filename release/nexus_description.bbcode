@@ -64,6 +64,7 @@ or run the included [i]linux_wine_override.py[/i] once with the game closed. Use
 [*][b]Keyboard and mouse only[/b] for now - controllers and HOTAS can't strafe or switch modes yet.
 [*]No on-screen mode indicator yet.
 [*]Typing A, D, Space or Z in text chat while flying also strafes or switches mode.
+[*][b]Multiplayer:[/b] 1.2.1 stops ships interfering with each other and is still being tested. If anything odd happens near other players, set [i]Debug = 1[/i] and attach [i]Binaries/BetterFlight.log[/i] to your report.
 [/list]
 
 [size=5][b]Settings[/b][/size]
@@ -96,6 +97,7 @@ Set [i]Debug = 1[/i] in [i]Binaries/BetterFlight.ini[/i], reproduce the problem,
 [*][b]Nothing happens:[/b] press F8 in case the mod was switched off. On Linux, check the launch option.
 [*][b]Ship brakes while holding the throttle:[/b] set ThrustKey / BrakeKey / BoostKey to the keys you use.
 [*][b]A/D still roll:[/b] the BetterFlightControls folder didn't install, or custom keybinds are overriding it.
+[*][b]A/D suddenly roll after a game update or crash:[/b] No Man's Sky switches all mods off after a crash, often caused by another out-of-date mod. Open [i]Binaries/SETTINGS/GCMODSETTINGS.MXML[/i], set [i]DisableAllMods[/i] to [i]false[/i], and remove or update the mod that crashed.
 [*][b]Log says the old data mod is still installed:[/b] delete GAMEDATA/MODS/BetterFlight.
 [/list]
 

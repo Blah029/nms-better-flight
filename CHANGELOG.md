@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.4 — 2026-10-06
+
+- **Merged 1.2.1 into the 1.3.x line.** Per-ship flight state (an unpiloted
+  corvette can no longer clobber your ship's state, one key press acts once
+  however many ships the game updates), 150 ms key-press debounce, the ship
+  census log, and controller diagnostics now ride on top of the 1.3.x
+  vanilla-coupled + strafe design.
+- The 1.3.x strafe-release / mode-switch window is per-ship state, like the
+  rest of the flight memory.
+- Simulator: the two-ship tests (M1-M5) run against 1.3.x behaviour - M3
+  verifies a coupled scene leaves both ships alone (no mod braking, no
+  velocity crossing between ships).
+
 ## 1.3.3 — 2026-10-05
 
 - **Fix: switching to coupled with large off-nose velocity no longer kicks
@@ -83,6 +96,22 @@
   reworked to verify the new behaviour (no mod writes, game model untouched),
   and new tests cover the mode-toggled retune scope and coupled strafe against
   the vanilla assist.
+
+## 1.2.1 — 2026-10-03 (pre-release)
+
+- **Fixed: ships interfering with each other.** The game runs the flight update
+  for more than one ship per frame (corvettes with nobody aboard, and likely other
+  players' ships in multiplayer), but the mod kept one global copy of "the ship's"
+  state. One ship's velocity could be written into another ("sent in random
+  directions"), an unpiloted ship marked Z/F8 as held every frame ("stuck in
+  coupled mode"), and coupled braking stopped engaging. State is now per ship,
+  and one key press acts once however many ships the game updates.
+- Logs which ships go through the flight update and what controls them, and notes
+  when two ships have a pilot in the same frame, for multiplayer reports.
+- Controller diagnostics (`[input] Diagnostics`, off by default) for upcoming
+  controller and HOTAS support. Read-only; logs nothing while off.
+- Docs: what to do when A/D suddenly roll (the game switched mods off after a crash).
+- Verified on Steam build 25624745.
 
 ## 1.2.0 — 2026-09-15
 

@@ -90,6 +90,7 @@ Use exactly **`n,b`**. Plain `n` stops the mod from working.
 - **Keyboard and mouse only** for now — controllers and HOTAS can't strafe or switch modes yet.
 - **No on-screen mode indicator** yet.
 - **Text chat:** typing A, D, Space or Z in chat while flying also strafes or switches mode.
+- **Multiplayer:** 1.2.1 stops ships interfering with each other and is still being tested. If anything odd happens near other players, set `Debug = 1` and attach `Binaries/BetterFlight.log` to your report.
 
 ---
 
@@ -149,6 +150,7 @@ Roll, pulse jump, land and exit are changed in the in-game Controls menu, which 
 - **Nothing happens:** press **F8** in case the mod was switched off.
 - **Ship brakes while holding the throttle:** set `ThrustKey` / `BrakeKey` / `BoostKey` to the keys you use.
 - **A/D still roll:** the `BetterFlightControls` folder didn't install, or your custom keybinds are overriding it.
+- **A/D suddenly roll after a game update or crash:** No Man's Sky switches *all* mods off after a crash, often caused by another out-of-date mod. Open `Binaries/SETTINGS/GCMODSETTINGS.MXML`, set `DisableAllMods` to `false`, and remove or update the mod that crashed.
 - **Log says the old data mod is still installed:** delete `GAMEDATA/MODS/BetterFlight`.
 
 ---
