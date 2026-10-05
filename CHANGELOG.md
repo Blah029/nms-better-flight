@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.5 — 2026-10-07
+
+- **The coupled strafe/switch window now cancels only the nose-axis push
+  that amplifies the current nose-direction motion.** A game push opposing
+  the nose velocity is damping (throttle wind-down, alignment) and passes
+  through, so the game's own deceleration keeps working inside the window
+  instead of the nose speed being frozen for up to 5 s. The unwanted
+  conversion is still fully cancelled: a push can leak only at/against a
+  zero crossing, where it creates motion in its own direction and then gets
+  blocked - residual bounded to ~one frame's push. New simulator test S7
+  pins the wind-down pass-through.
+
 ## 1.3.4 — 2026-10-06
 
 - **Merged 1.2.1 into the 1.3.x line.** Per-ship flight state (an unpiloted

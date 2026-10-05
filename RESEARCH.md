@@ -1236,6 +1236,24 @@ the game's own rate (~1.3 s in the live case). The lateral collapse is not
 and should not be fixed — it is the vanilla `DirectionBrake` eating an
 artificial state; staying decoupled keeps the drift.
 
+**The 1.3.5 refinement: cancel only what amplifies.** The 1.3.1-1.3.3
+cancellation discarded the *whole* nose-axis game change inside the window,
+which also froze the nose speed: a ship carrying forward speed while the
+window was armed could not enjoy the game's own throttle wind-down. The
+refinement filters by direction relative to the current nose velocity
+(`keep_f = (vfn * gfc > 0) ? 0 : gfc`): a push that amplifies the current
+nose-direction motion (push and nose velocity share a sign) is cancelled; a
+push opposing it damps the motion and passes through. The leak is bounded
+by construction - a push can pass only at/against a zero crossing, where it
+creates motion in its own direction and then becomes same-sign and gets
+blocked, so the residual is at most ~one frame's push (sub-m/s in the strafe
+cases, ~3 m/s worst case in the violent 1600 m/s switch transient). An
+absolute sign filter (always cancel positive pushes) was considered and
+rejected: it ratchets - negative pushes leak without limit while the
+positive corrections that would cancel the resulting backwards speed are
+exactly the ones blocked, which would have re-opened the 1.3.2 release kick
+and the 1.3.3 switch kick (both are negative-push phases in the live logs).
+
 ---
 
 ## Sources

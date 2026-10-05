@@ -15,7 +15,7 @@ import hashlib, re, shutil, subprocess, sys, zipfile
 from pathlib import Path
 import common as C
 
-VERSION = "1.3.4"
+VERSION = "1.3.5"
 DIST    = C.ROOT / "dist"
 REL     = C.ROOT / "release"
 

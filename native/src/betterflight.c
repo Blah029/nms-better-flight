@@ -31,7 +31,7 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.3.4"
+#define BF_VERSION "1.3.5"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
@@ -1331,13 +1331,20 @@ static void flight_tick(void *ship, float dt)
      * game's flight model converts sustained sideways/vertical drift into
      * forward/backwards velocity - it steers the velocity vector toward the
      * nose (live logs: a pure strafe in space drew up to ~30 m/s^2 of
-     * nose-axis push from the game). Cancel only that nose-axis change: the
-     * game's own bleed of the drift keeps running (the vanilla "gentle push"
-     * feel), and the drift stays sideways. The release window covers the
-     * residual drift after key release; the strafe-activity requirement keeps
-     * vanilla slide-turn recovery (no recent strafe) untouched. The real-drift
-     * requirement leaves hover/landing alone (nose-axis lift with ~no drift);
-     * hand-off already covers autopilot, pulse drive, impacts, take-off.
+     * nose-axis push from the game). Cancel only the part of that nose-axis
+     * change that amplifies the current nose-direction motion: a push
+     * opposing the nose velocity is damping (throttle wind-down, alignment)
+     * and passes through, so the game's own deceleration keeps working
+     * inside the window. A push can leak only at/against a zero crossing,
+     * where it creates motion in its own direction and then gets blocked -
+     * the residual is bounded to ~one frame's push. The game's own bleed of
+     * the drift keeps running (the vanilla "gentle push" feel), and the
+     * drift stays sideways. The release window covers the residual drift
+     * after key release; the strafe-activity requirement keeps vanilla
+     * slide-turn recovery (no recent strafe) untouched. The real-drift
+     * requirement leaves hover/landing alone (nose-axis lift with ~no
+     * drift); hand-off already covers autopilot, pulse drive, impacts,
+     * take-off.
      * In coupled mode otherwise the game's flight model (steering, braking,
      * min-speed) is left to run: only the strafe thrust below is added. */
     if (!resync && !handoff) {
@@ -1352,6 +1359,12 @@ static void flight_tick(void *ship, float dt)
             float keep_r = 0.0f, keep_u = 0.0f, keep_f = 0.0f;
             if (strafe_conv) {
                 keep_r = gcr; keep_u = gcu;   /* let the game bleed the drift */
+                /* Cancel only the nose-axis push that amplifies the current
+                 * nose-direction motion (push and nose velocity same sign);
+                 * a push opposing the nose velocity damps it and passes
+                 * through. */
+                float vfn = dot3(v, at);
+                keep_f = (vfn * gfc > 0) ? 0 : gfc;
             } else {
                 /* Pass the game's forward change only in the direction the pilot
                  * pushes: W/boost keep accelerating, S keeps braking - so holding
@@ -2132,6 +2145,15 @@ int main(void)
     check("S6 coupled switch, no drift: vanilla, no writes",
           sim_writes == 0, "writes=%d", sim_writes);
     sim_swing = 0;
+    /* S7. wind-down pass-through: carrying forward speed while the window is
+     * armed, the game's own deceleration is a push OPPOSING the nose
+     * velocity - it passes through, so the ship slows instead of being
+     * frozen at its entry speed for the window. */
+    sim_reset(100, 20, 0); sim_game_accel[2] = -30; sim_keys['D'] = 1;
+    sim_run(180, dt, 0, 0, 0);
+    check("S7 coupled strafe with forward speed: game's wind-down passes through",
+          dot3(W, R[2]) < 80, "fwd after 3s = %.1f (start 100)", dot3(W, R[2]));
+    sim_keys['D'] = 0; sim_game_accel[2] = 0;
 
     /* G. slow flight: game changes pass through below MomentumMinSpeed */
     sim_reset(20, 0, 0); memcpy(w0, W, sizeof w0); g_decoupled = 1;
