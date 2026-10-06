@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.6 — 2026-10-07
+
+- **Coupled strafe now reaches `MaxStrafeSpeed`.** While a strafe key is
+  held, the part of the game's lateral change that fights the active thrust
+  is cancelled (the 1.3.5 velocity-relative rule, extended from the nose
+  axis to the strafe axes), so the thruster runs unopposed up to the
+  `MaxStrafeSpeed` cap - decoupled authority. Same-direction game pushes
+  (e.g. the vanilla brake assisting a reversal) still pass through. On key
+  release the cancellation drops away immediately and the vanilla bleed
+  resumes, so the drift decays on its own with no forward kick (the 1.3.2
+  window keeps the nose-axis rule armed as before). New simulator tests
+  S8/S8' pin the cap and the release decay.
+
 ## 1.3.5 — 2026-10-07
 
 - **The coupled strafe/switch window now cancels only the nose-axis push

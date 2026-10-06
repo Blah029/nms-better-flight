@@ -1254,6 +1254,24 @@ positive corrections that would cancel the resulting backwards speed are
 exactly the ones blocked, which would have re-opened the 1.3.2 release kick
 and the 1.3.3 switch kick (both are negative-push phases in the live logs).
 
+**The 1.3.6 extension: strafe authority in coupled.** The 1.3.x design
+accepted that coupled strafe stalls at the balance point between the
+thruster (`LateralAccel`, 70 m/s²) and the game's lateral counter-bleed
+(`DirectionBrake` + steering) - live logs showed plateaus of ~24 m/s on
+planets and ~50 m/s in space, far below `MaxStrafeSpeed` (140 m/s), while
+decoupled strafe (whose momentum discard throws the counter-bleed away)
+reaches the cap exactly. 1.3.6 extends the 1.3.5 velocity-relative
+principle to the strafe axes: while a strafe key is held, the part of the
+game's lateral change that fights the active thrust is cancelled
+(`keep_r = (sx * gcr < 0) ? 0 : gcr`, same for the vertical axis), so the
+thruster runs unopposed up to the cap. The cancellation is tied to the
+*held* key, not the release window: on release it drops away immediately
+and the vanilla bleed resumes (stronger at high drift - the 140 m/s case
+decays in ~1-2 s), while the nose-axis 1.3.5 rule stays armed through the
+5 s window, so no forward kick. Same-direction game pushes are untouched
+(the vanilla brake still assists a reversal until the drift crosses zero).
+Net effect: decoupled authority while held, coupled manners on release.
+
 ---
 
 ## Sources

@@ -91,6 +91,7 @@ def main():
         return
 
     if st.get("steam_buildid") == bid and C.MBINC.exists() and not a.force:
+        ensure_dotnet()    # /root/.dotnet is non-persistent - reinstall if wiped
         print(f"  toolchain: {st['mbincompiler']} already validated for this build")
         return
 

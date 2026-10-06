@@ -31,7 +31,7 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.3.5"
+#define BF_VERSION "1.3.6"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
@@ -1358,7 +1358,14 @@ static void flight_tick(void *ship, float dt)
             float gcr = dot3(g, right), gcu = dot3(g, up), gfc = dot3(g, at);
             float keep_r = 0.0f, keep_u = 0.0f, keep_f = 0.0f;
             if (strafe_conv) {
-                keep_r = gcr; keep_u = gcu;   /* let the game bleed the drift */
+                /* Let the game bleed the drift, except the part that fights
+                 * the active strafe thrust: cancel that, so the thruster runs
+                 * unopposed up to MaxStrafeSpeed (decoupled authority). A
+                 * same-direction game push (e.g. the vanilla brake assisting
+                 * a reversal) passes through untouched. On key release the
+                 * cancellation drops away and the vanilla bleed resumes. */
+                keep_r = (sx * gcr < 0) ? 0 : gcr;
+                keep_u = (sy * gcu < 0) ? 0 : gcu;
                 /* Cancel only the nose-axis push that amplifies the current
                  * nose-direction motion (push and nose velocity same sign);
                  * a push opposing the nose velocity damps it and passes
@@ -1830,6 +1837,7 @@ static float sim_game_accel[3];    /* game-applied accel in ship axes: right, up
 static float sim_steer;            /* game steers velocity toward the nose (m/s^2), force-based model */
 static float sim_reverse_brake;    /* game's reverse-speed limit: pushes forward when going backwards > 134 m/s */
 static float sim_swing;            /* game swings velocity toward the nose, keeping speed (m/s^2) */
+static float sim_brake;            /* game bleeds off-nose velocity, force proportional to speed (1/s) - the DirectionBrake term, calibrated ~1.35 from live logs (70 m/s^2 at 50 m/s, 179 m/s^2 at 140 m/s) */
 static float R[3][3];              /* rows: right, up, at (world space) */
 static int   sim_writes;
 static uint8_t sim_ship[0x100], sim_phys[0x100], sim_state_blob[0x10];
@@ -1875,7 +1883,7 @@ static void sim_reset(float v_at, float v_right, float v_up)
     for (int i = 0; i < 3; i++) W[i] = v_right * R[0][i] + v_up * R[1][i] + v_at * R[2][i];
     memset(g_ships, 0, sizeof g_ships); memset(&g_ship_none, 0, sizeof g_ship_none); g_cur = &g_ship_none;
     memset(sim_keys, 0, sizeof sim_keys);
-    memset(sim_game_accel, 0, sizeof sim_game_accel); sim_steer = 0; sim_reverse_brake = 0; sim_swing = 0;
+    memset(sim_game_accel, 0, sizeof sim_game_accel); sim_steer = 0; sim_reverse_brake = 0; sim_swing = 0; sim_brake = 0;
     g_decoupled = 0; g_enabled = 1; sim_writes = 0; g_handoff_until = 0; g_hard_until = 0;
 }
 
@@ -1942,6 +1950,12 @@ static void sim_run(int frames, float dt, int axis, float rate, int carry)
         }
         if (sim_reverse_brake > 0 && dot3(W, R[2]) < -134.0f)
             for (int i = 0; i < 3; i++) W[i] += R[2][i] * sim_reverse_brake * dt;
+        if (sim_brake > 0) {                       /* speed-proportional bleed of the off-nose part */
+            float fa = dot3(W, R[2]), perp[3];
+            for (int i = 0; i < 3; i++) perp[i] = W[i] - R[2][i] * fa;
+            float pm = len3(perp), bl = sim_brake * pm * dt;
+            if (pm > 1e-4f) { if (bl > pm) bl = pm; for (int i = 0; i < 3; i++) W[i] -= perp[i] / pm * bl; }
+        }
         if (sim_swing > 0) {
             float sp = len3(W);
             if (sp > 1e-3f) {
@@ -2154,6 +2168,22 @@ int main(void)
     check("S7 coupled strafe with forward speed: game's wind-down passes through",
           dot3(W, R[2]) < 80, "fwd after 3s = %.1f (start 100)", dot3(W, R[2]));
     sim_keys['D'] = 0; sim_game_accel[2] = 0;
+    /* S8. 1.3.6: the game's counter-bleed that fights the active strafe
+     * thrust (sim_brake models the speed-proportional DirectionBrake bleed
+     * from the live logs) is cancelled while the key is held, so the
+     * thruster reaches MaxStrafeSpeed (decoupled authority) instead of
+     * stalling at the balance point. On release the vanilla bleed resumes
+     * and decays the drift. */
+    sim_reset(0, 0, 0); sim_brake = 1.35; sim_keys['D'] = 1;
+    sim_run(180, dt, 0, 0, 0);
+    check("S8 coupled strafe vs game bleed: reaches MaxStrafeSpeed",
+          dot3(W, R[0]) > 130, "side after 3s = %.1f (cap 140)", dot3(W, R[0]));
+    sim_keys['D'] = 0;
+    sim_run(300, dt, 0, 0, 0);
+    check("S8' release: vanilla bleed resumes, drift decays, no kick",
+          dot3(W, R[0]) < 50 && fabsf(dot3(W, R[2])) < 6,
+          "side=%.1f fwd=%.1f after 5s coast", dot3(W, R[0]), dot3(W, R[2]));
+    sim_brake = 0;
 
     /* G. slow flight: game changes pass through below MomentumMinSpeed */
     sim_reset(20, 0, 0); memcpy(w0, W, sizeof w0); g_decoupled = 1;
