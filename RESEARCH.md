@@ -1272,6 +1272,23 @@ decays in ~1-2 s), while the nose-axis 1.3.5 rule stays armed through the
 (the vanilla brake still assists a reversal until the drift crosses zero).
 Net effect: decoupled authority while held, coupled manners on release.
 
+**The 1.3.7 fix: W + strafe.** Live logs showed the 1.3.6 lateral
+cancellation switching off while W was held: the strafe stalled at the
+vanilla balance point (24.5 m/s in atmosphere with the game bleeding
+~72 m/s^2) and recovered to the 140 m/s cap only on W release - the
+`discarded game push` column was 0 in every W-held frame, i.e. the whole
+momentum block was skipped. Cause: the `strafe_conv` gate carried
+`!fwd_in`, inherited from the 1.3.1 nose rule (while a forward key is
+held, the nose axis is the pilot's domain - the cancellation there would
+block the W acceleration). 1.3.6 piggybacked the lateral rule on the same
+gate and inherited the exclusion. The fix splits the gate's axis
+coverage: the lateral rule now applies regardless of `fwd_in`, while the
+nose rule keeps requiring `!fwd_in` (with W held, `keep_f = gfc` - fully
+vanilla, exactly the 1.3.6 status quo, so the top-speed brake is not
+eaten). The stall value is environment-dependent only through the bleed
+curve: ~24 m/s on planets (k ~ 2.9 1/s), ~50 m/s in space (k ~ 1.4 1/s)
+from the live plateau measurements.
+
 ---
 
 ## Sources

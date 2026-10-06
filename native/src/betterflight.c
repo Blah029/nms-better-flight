@@ -31,7 +31,7 @@
 #include "MinHook.h"
 #include "signatures.h"
 
-#define BF_VERSION "1.3.6"
+#define BF_VERSION "1.3.7"
 
 /* ======================================================================== */
 /*  winmm proxy                                                             */
@@ -1331,26 +1331,38 @@ static void flight_tick(void *ship, float dt)
      * game's flight model converts sustained sideways/vertical drift into
      * forward/backwards velocity - it steers the velocity vector toward the
      * nose (live logs: a pure strafe in space drew up to ~30 m/s^2 of
-     * nose-axis push from the game). Cancel only the part of that nose-axis
-     * change that amplifies the current nose-direction motion: a push
-     * opposing the nose velocity is damping (throttle wind-down, alignment)
-     * and passes through, so the game's own deceleration keeps working
-     * inside the window. A push can leak only at/against a zero crossing,
-     * where it creates motion in its own direction and then gets blocked -
-     * the residual is bounded to ~one frame's push. The game's own bleed of
-     * the drift keeps running (the vanilla "gentle push" feel), and the
-     * drift stays sideways. The release window covers the residual drift
-     * after key release; the strafe-activity requirement keeps vanilla
-     * slide-turn recovery (no recent strafe) untouched. The real-drift
-     * requirement leaves hover/landing alone (nose-axis lift with ~no
-     * drift); hand-off already covers autopilot, pulse drive, impacts,
-     * take-off.
+     * nose-axis push from the game). The two axes are handled separately:
+     *
+     * Lateral (1.3.6): cancel only the part of the game's lateral change
+     * that fights the active strafe thrust, so the thruster runs unopposed
+     * up to MaxStrafeSpeed (decoupled authority). This applies while a
+     * forward key is held too (1.3.7) - without it the vanilla counter-
+     * bleed stalls the strafe at the balance point (~24 m/s on planets,
+     * ~50 m/s in space). Same-direction game pushes (e.g. the vanilla
+     * brake assisting a reversal) pass through untouched; on strafe key
+     * release the cancellation drops away and the vanilla bleed resumes.
+     *
+     * Nose (1.3.5): cancel only the part of the nose-axis change that
+     * amplifies the current nose-direction motion; a push opposing the
+     * nose velocity is damping (throttle wind-down, alignment) and passes
+     * through. A push can leak only at/against a zero crossing, where it
+     * creates motion in its own direction and then gets blocked - the
+     * residual is bounded to ~one frame's push. While a forward key is
+     * held the nose axis stays fully vanilla (1.3.7): the throttle and
+     * top-speed brake pass through untouched, because the cancellation
+     * would block the W acceleration.
+     *
+     * The release window covers the residual drift after key release; the
+     * strafe-activity requirement keeps vanilla slide-turn recovery (no
+     * recent strafe) untouched. The real-drift requirement leaves
+     * hover/landing alone (nose-axis lift with ~no drift); hand-off already
+     * covers autopilot, pulse drive, impacts, take-off.
      * In coupled mode otherwise the game's flight model (steering, braking,
      * min-speed) is left to run: only the strafe thrust below is added. */
     if (!resync && !handoff) {
         int decon = g_decoupled && cfg.world_momentum && len3(M.v) > cfg.momentum_min_speed;
         float mvr = dot3(M.v, right), mvu = dot3(M.v, up);
-        int strafe_conv = !g_decoupled && !fwd_in &&
+        int strafe_conv = !g_decoupled &&
                           mvr * mvr + mvu * mvu > 25.0f && now < g_strafe_window;
         if (decon || strafe_conv) {
             /* Each keep_* is the part of the game's change along that axis we
@@ -1366,12 +1378,21 @@ static void flight_tick(void *ship, float dt)
                  * cancellation drops away and the vanilla bleed resumes. */
                 keep_r = (sx * gcr < 0) ? 0 : gcr;
                 keep_u = (sy * gcu < 0) ? 0 : gcu;
-                /* Cancel only the nose-axis push that amplifies the current
-                 * nose-direction motion (push and nose velocity same sign);
-                 * a push opposing the nose velocity damps it and passes
-                 * through. */
-                float vfn = dot3(v, at);
-                keep_f = (vfn * gfc > 0) ? 0 : gfc;
+                if (fwd_in) {
+                    /* A forward key is held: the nose axis is the pilot's
+                     * domain - throttle, brake, top-speed limit all pass
+                     * through fully vanilla. The velocity-relative rule
+                     * below must not apply: it would block the W
+                     * acceleration (push and nose velocity same sign). */
+                    keep_f = gfc;
+                } else {
+                    /* Cancel only the nose-axis push that amplifies the
+                     * current nose-direction motion (push and nose velocity
+                     * same sign); a push opposing the nose velocity damps
+                     * it and passes through. */
+                    float vfn = dot3(v, at);
+                    keep_f = (vfn * gfc > 0) ? 0 : gfc;
+                }
             } else {
                 /* Pass the game's forward change only in the direction the pilot
                  * pushes: W/boost keep accelerating, S keeps braking - so holding
@@ -1396,8 +1417,9 @@ static void flight_tick(void *ship, float dt)
 
     /* 2. Strafe thrusters (both modes). In coupled mode this is the ONLY
      * flight change on top of the vanilla model: a push along the ship's
-     * right/up axes. The game's flight assist bleeds off sideways velocity,
-     * so coupled strafe is a gentle push against it - not free 6DOF drift.
+     * right/up axes. The game's counter-bleed of the active thrust is
+     * cancelled in the momentum section above, so the strafe runs to
+     * MaxStrafeSpeed; on key release the vanilla bleed decays the drift.
      * Raise LateralAccel/VerticalAccel in BetterFlight.ini for more. */
     float dr = thrust(sx, vr, cfg.lateral_accel,  dt, cfg.max_strafe_speed);
     float du = thrust(sy, vu, cfg.vertical_accel, dt, cfg.max_strafe_speed);
@@ -2184,6 +2206,26 @@ int main(void)
           dot3(W, R[0]) < 50 && fabsf(dot3(W, R[2])) < 6,
           "side=%.1f fwd=%.1f after 5s coast", dot3(W, R[0]), dot3(W, R[2]));
     sim_brake = 0;
+    /* S9. 1.3.7: while a forward key is held, the lateral cancellation
+     * stays active (the strafe reaches MaxStrafeSpeed instead of stalling
+     * at the balance point) and the nose axis stays fully vanilla - the
+     * game's throttle push passes through. */
+    sim_reset(0, 0, 0); sim_brake = 1.35; sim_game_accel[2] = 30;
+    sim_keys['W'] = 1; sim_keys['D'] = 1;
+    sim_run(180, dt, 0, 0, 0);
+    check("S9 W+strafe: lateral reaches cap, throttle passes",
+          dot3(W, R[0]) > 130 && dot3(W, R[2]) > 50,
+          "side=%.1f fwd=%.1f after 3s", dot3(W, R[0]), dot3(W, R[2]));
+    sim_keys['W'] = 0; sim_keys['D'] = 0; sim_game_accel[2] = 0;
+    /* S9'. W+strafe held: the game's NEGATIVE nose push (e.g. the top-speed
+     * brake) also passes through - the nose axis is untouched by the
+     * strafe rules while a forward key is held. */
+    sim_reset(100, 50, 0); sim_brake = 1.35; sim_game_accel[2] = -30;
+    sim_keys['W'] = 1; sim_keys['D'] = 1;
+    sim_run(60, dt, 0, 0, 0);
+    check("S9' W+strafe held: game's nose brake passes through",
+          dot3(W, R[2]) < 85, "fwd after 1s = %.1f (start 100)", dot3(W, R[2]));
+    sim_keys['W'] = 0; sim_keys['D'] = 0; sim_game_accel[2] = 0; sim_brake = 0;
 
     /* G. slow flight: game changes pass through below MomentumMinSpeed */
     sim_reset(20, 0, 0); memcpy(w0, W, sizeof w0); g_decoupled = 1;

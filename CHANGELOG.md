@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.7 — 2026-10-06
+
+- **Coupled strafe now reaches `MaxStrafeSpeed` while a forward key is
+  held.** The 1.3.6 lateral cancellation was gated behind `!fwd_in`
+  (inherited from the 1.3.1 nose rule), so holding W disabled it and the
+  strafe stalled at the vanilla balance point (~24 m/s on planets, ~50 m/s
+  in space) until W was released. The gate no longer excludes forward
+  input: the lateral rule (cancel only what fights the active thrust) now
+  applies with W held, while the nose axis stays fully vanilla in that
+  case - throttle, brake and top-speed limit pass through untouched,
+  because the 1.3.5 velocity-relative rule would block the W acceleration.
+  New simulator tests S9/S9' pin the cap-under-W and the nose-brake
+  pass-through.
+
 ## 1.3.6 — 2026-10-07
 
 - **Coupled strafe now reaches `MaxStrafeSpeed`.** While a strafe key is
